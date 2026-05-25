@@ -231,6 +231,12 @@ Enables interfacing with i3 and Sway's IPC.
 
 To disable: `-DI3_IPC=OFF`
 
+### Triad
+Enables interfacing with Triad's native IPC through `$TRIAD_SOCKET`.
+This feature requires Unix socket support.
+
+To disable: `-DTRIAD=OFF`
+
 ## Building
 *For developers and prospective contributors: See [CONTRIBUTING.md](CONTRIBUTING.md).*
 

@@ -29,6 +29,10 @@ if (X11)
 	add_subdirectory(x11)
 endif()
 
+if (TRIAD_effective)
+	add_subdirectory(triad)
+endif()
+
 add_subdirectory(services)
 
 if (BLUETOOTH)
