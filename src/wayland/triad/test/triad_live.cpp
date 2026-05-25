@@ -197,6 +197,55 @@ QtObject {
 		delete object;
 	}
 
+	void exercisesLiveCurrentTargetActions() {
+		auto* ipc = TriadIpc::instance();
+		QTRY_VERIFY_WITH_TIMEOUT(ipc->bindableConnected().value(), 3000);
+
+		auto spy = QSignalSpy(ipc, &TriadIpc::requestFinished);
+
+		auto stateId = ipc->refresh();
+		QTRY_VERIFY_WITH_TIMEOUT(hasRequestResult(spy, stateId), 3000);
+		QVERIFY(requestResult(spy, stateId).at(1).toBool());
+
+		const auto activeWorkspaceIndex = ipc->bindableActiveWorkspaceIndex().value();
+		if (activeWorkspaceIndex > 0) {
+			auto requestId = ipc->focusWorkspace(activeWorkspaceIndex);
+			QTRY_VERIFY_WITH_TIMEOUT(hasRequestResult(spy, requestId), 3000);
+			QVERIFY(requestResult(spy, requestId).at(1).toBool());
+		}
+
+		const auto activeTag = ipc->bindableActiveTag().value();
+		if (activeTag > 0) {
+			auto requestId = ipc->focusTag(activeTag);
+			QTRY_VERIFY_WITH_TIMEOUT(hasRequestResult(spy, requestId), 3000);
+			QVERIFY(requestResult(spy, requestId).at(1).toBool());
+		}
+
+		auto* focusedWindow = ipc->bindableFocusedWindow().value();
+		if (focusedWindow != nullptr) {
+			auto requestId = ipc->focusWindow(focusedWindow->bindableId().value());
+			QTRY_VERIFY_WITH_TIMEOUT(hasRequestResult(spy, requestId), 3000);
+			QVERIFY(requestResult(spy, requestId).at(1).toBool());
+		}
+
+		auto* focusedWorkspace = ipc->bindableFocusedWorkspace().value();
+		if (focusedWorkspace != nullptr && !focusedWorkspace->bindableLayout().value().isEmpty()) {
+			auto requestId = ipc->setLayout(
+			    focusedWorkspace->bindableLayout().value(),
+			    {{"tag", focusedWorkspace->bindableTagId().value()}}
+			);
+			QTRY_VERIFY_WITH_TIMEOUT(hasRequestResult(spy, requestId), 3000);
+			QVERIFY(requestResult(spy, requestId).at(1).toBool());
+		}
+
+		const auto keyboardLayoutIndex = ipc->bindableCurrentKeyboardLayoutIndex().value();
+		if (keyboardLayoutIndex >= 0) {
+			auto requestId = ipc->switchKeyboardLayout(keyboardLayoutIndex);
+			QTRY_VERIFY_WITH_TIMEOUT(hasRequestResult(spy, requestId), 3000);
+			QVERIFY(requestResult(spy, requestId).at(1).toBool());
+		}
+	}
+
 private:
 	QString socketPath;
 };
