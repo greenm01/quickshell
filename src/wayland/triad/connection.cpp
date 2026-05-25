@@ -1,6 +1,7 @@
 #include "connection.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -16,13 +17,16 @@
 #include <qloggingcategory.h>
 #include <qmetatype.h>
 #include <qobject.h>
+#include <qobjectdefs.h>
+#include <qstring.h>
 #include <qtenvironmentvariables.h>
 #include <qtimer.h>
-#include <limits>
+#include <qtmetamacros.h>
+#include <qtpreprocessorsupport.h>
 #include <qtypes.h>
 #include <qvariant.h>
 
-#include "../core/logcat.hpp"
+#include "../../core/logcat.hpp"
 #include "output.hpp"
 #include "window.hpp"
 #include "workspace.hpp"
@@ -33,14 +37,19 @@ namespace {
 QS_LOGGING_CATEGORY(logTriadIpc, "quickshell.triad.ipc", QtWarningMsg);
 QS_LOGGING_CATEGORY(logTriadIpcEvents, "quickshell.triad.ipc.events", QtWarningMsg);
 
-constexpr auto TriadIpcVersion = 1;
+constexpr auto TRIAD_IPC_VERSION = 1;
+#ifdef QS_TEST
+constexpr auto REQUEST_TIMEOUT_MS = 250;
+#else
+constexpr auto REQUEST_TIMEOUT_MS = 5000;
+#endif
 
 QJsonObject triadPayload(const QString& request) {
-	return {{"version", TriadIpcVersion}, {"request", request}};
+	return {{"version", TRIAD_IPC_VERSION}, {"request", request}};
 }
 
 QJsonObject triadRoot(QJsonObject payload) {
-	payload.insert("version", TriadIpcVersion);
+	payload.insert("version", TRIAD_IPC_VERSION);
 	return {{"triad", payload}};
 }
 
@@ -91,7 +100,9 @@ bool isIntegral(const QVariant& value) {
 	    || type == QMetaType::ULongLong;
 }
 
-bool isNumeric(const QVariant& value) { return isIntegral(value) || value.metaType().id() == QMetaType::Double; }
+bool isNumeric(const QVariant& value) {
+	return isIntegral(value) || value.metaType().id() == QMetaType::Double;
+}
 
 bool isPositiveUint(const QVariant& value) {
 	if (value.metaType().id() == QMetaType::Double) {
@@ -104,7 +115,7 @@ bool isPositiveUint(const QVariant& value) {
 	if (type == QMetaType::Int || type == QMetaType::LongLong) {
 		auto ok = false;
 		auto parsed = value.toLongLong(&ok);
-		return ok && parsed > 0 && parsed <= std::numeric_limits<quint32>::max();
+		return ok && parsed > 0 && std::cmp_less_equal(parsed, std::numeric_limits<quint32>::max());
 	}
 
 	auto ok = false;
@@ -128,18 +139,107 @@ bool isNonEmptyString(const QVariant& value) {
 
 bool isBool(const QVariant& value) { return value.metaType().id() == QMetaType::Bool; }
 
-bool isList(const QVariant& value) {
-	auto type = value.metaType().id();
-	return type == QMetaType::QVariantList || type == QMetaType::QStringList;
-}
-
 bool isNonEmptyStringList(const QVariant& value) {
 	if (value.metaType().id() == QMetaType::QStringList) return !value.toStringList().isEmpty();
 	if (value.metaType().id() != QMetaType::QVariantList) return false;
 
 	auto list = value.toList();
 	if (list.isEmpty()) return false;
-	return std::all_of(list.begin(), list.end(), [](const QVariant& item) { return isString(item); });
+	return std::ranges::all_of(list, [](const QVariant& item) { return isString(item); });
+}
+
+QString discoverSocketPath() {
+	auto socket = qEnvironmentVariable("TRIAD_SOCKET");
+	if (!socket.isEmpty()) return socket;
+
+	auto runtimeDir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+	if (!runtimeDir.isEmpty()) {
+		socket = QDir(runtimeDir).filePath("triad.sock");
+		if (QFileInfo::exists(socket)) return socket;
+	}
+
+	return "/tmp/triad.sock";
+}
+
+bool payloadMatchesShape(
+    const QString& commandName,
+    const QString& shape,
+    const QVariantMap& payload
+) {
+	auto hasUint = [&payload](const QString& key) { return isPositiveUint(payload.value(key)); };
+	auto hasInt = [&payload](const QString& key) { return isInteger(payload.value(key)); };
+	auto hasNumber = [&payload](const QString& key) { return isNumeric(payload.value(key)); };
+	auto hasNonEmptyString = [&payload](const QString& key) {
+		return isNonEmptyString(payload.value(key));
+	};
+	auto optionalUint = [&payload, hasUint](const QString& key) {
+		return !payload.contains(key) || hasUint(key);
+	};
+	auto optionalInt = [&payload, hasInt](const QString& key) {
+		return !payload.contains(key) || hasInt(key);
+	};
+	auto optionalDouble = [&payload, hasNumber](const QString& key) {
+		return !payload.contains(key) || hasNumber(key);
+	};
+	auto optionalString = [&payload](const QString& key) {
+		return !payload.contains(key) || isString(payload.value(key));
+	};
+	auto optionalBool = [&payload](const QString& key) {
+		return !payload.contains(key) || isBool(payload.value(key));
+	};
+
+	if (shape == "none") return true;
+	if (shape == "optional-window-id") return optionalUint("id");
+	if (shape == "required-window-id") return hasUint("id");
+	if (shape == "window-tag-follow")
+		return hasUint("id") && hasUint("tag") && optionalBool("follow");
+	if (shape == "window-workspace-follow") {
+		return hasUint("id") && hasUint("workspace_idx") && optionalBool("follow");
+	}
+	if (shape == "window-bool") return hasUint("id") && isBool(payload.value("value"));
+	if (shape == "tag-layout") return hasUint("tag") && hasNonEmptyString("layout");
+	if (shape == "required-tag") return hasUint("tag");
+	if (shape == "required-workspace-idx") return hasUint("workspace_idx");
+	if (shape == "required-name") return hasNonEmptyString("name");
+	if (shape == "required-output") return hasNonEmptyString("output");
+	if (shape == "required-float-delta") return hasNumber("delta");
+	if (shape == "required-int-delta") return hasInt("delta");
+	if (shape == "optional-float-delta") return optionalDouble("delta");
+	if (shape == "optional-int-delta") return optionalInt("delta");
+	if (shape == "required-float-value") {
+		return hasNumber("value") || (commandName == "set-column-width" && hasNumber("width"));
+	}
+	if (shape == "required-int-count") return hasInt("count");
+	if (shape == "move-delta") return hasInt("dx") && hasInt("dy");
+	if (shape == "resize-delta") return hasInt("dw") && hasInt("dh");
+	if (shape == "recent-advance") return optionalString("scope") && optionalString("filter");
+	if (shape == "recent-scope") return hasNonEmptyString("scope");
+	if (shape == "spawn-argv" || shape == "split-tree-mode-list") {
+		return isNonEmptyStringList(payload.value("argv"));
+	}
+	if (shape == "warp-pointer") return hasInt("x") && hasInt("y");
+	if (shape == "screenshot") {
+		if (!optionalString("path") || !optionalBool("show_pointer") || !optionalBool("write_to_disk")
+		    || !optionalBool("copy_to_clipboard"))
+		{
+			return false;
+		}
+
+		auto writeToDisk =
+		    !payload.contains("write_to_disk") || payload.value("write_to_disk").toBool();
+		auto copyToClipboard =
+		    !payload.contains("copy_to_clipboard") || payload.value("copy_to_clipboard").toBool();
+		return writeToDisk || copyToClipboard;
+	}
+	if (shape == "keyboard-layout-target") {
+		if (!payload.contains("layout")) return true;
+		auto layout = payload.value("layout");
+		return isString(layout) || isInteger(layout);
+	}
+
+	qCWarning(logTriadIpc) << "Unknown Triad command arg_shape" << shape << "for" << commandName
+	                       << "- allowing daemon-side validation.";
+	return true;
 }
 } // namespace
 
@@ -155,7 +255,7 @@ TriadIpc::TriadIpc() {
 	QObject::connect(&this->reconnectTimer, &QTimer::timeout, this, &TriadIpc::reconnect);
 	// clang-format on
 
-	this->setSocketPath(this->discoverSocketPath());
+	this->setSocketPath(discoverSocketPath());
 	this->connectEventStream();
 }
 
@@ -169,19 +269,6 @@ TriadIpc* TriadIpc::instance() {
 	return instance;
 }
 
-QString TriadIpc::discoverSocketPath() const {
-	auto socket = qEnvironmentVariable("TRIAD_SOCKET");
-	if (!socket.isEmpty()) return socket;
-
-	auto runtimeDir = qEnvironmentVariable("XDG_RUNTIME_DIR");
-	if (!runtimeDir.isEmpty()) {
-		socket = QDir(runtimeDir).filePath("triad.sock");
-		if (QFileInfo::exists(socket)) return socket;
-	}
-
-	return "/tmp/triad.sock";
-}
-
 void TriadIpc::setSocketPath(const QString& path) {
 	if (this->mSocketPath == path) return;
 	this->mSocketPath = path;
@@ -191,7 +278,7 @@ void TriadIpc::setSocketPath(const QString& path) {
 void TriadIpc::connectEventStream() {
 	if (this->connecting || this->eventSocket.state() != QLocalSocket::UnconnectedState) return;
 
-	this->setSocketPath(this->discoverSocketPath());
+	this->setSocketPath(discoverSocketPath());
 	if (this->mSocketPath.isEmpty()) {
 		this->reconnectTimer.start();
 		return;
@@ -252,14 +339,26 @@ qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callbac
 	auto requestId = this->nextRequestId++;
 	auto* socket = new QLocalSocket(this);
 	auto* reader = new StreamReader();
+	auto* timer = new QTimer(this);
 	reader->setDevice(socket);
+	timer->setSingleShot(true);
+	timer->setInterval(REQUEST_TIMEOUT_MS);
 
-	auto cleaned = std::make_shared<bool>(false);
-	auto cleanup = [socket, reader, cleaned]() {
-		if (*cleaned) return;
-		*cleaned = true;
+	auto completed = std::make_shared<bool>(false);
+	auto cleanup = [socket, reader, timer, completed]() {
+		if (*completed) return false;
+		*completed = true;
+		timer->stop();
+		timer->deleteLater();
 		delete reader;
 		socket->deleteLater();
+		return true;
+	};
+	auto complete = [requestId,
+	                 callback = std::move(callback),
+	                 cleanup](bool ok, const QJsonObject& triad, const QString& error) {
+		if (!cleanup()) return;
+		if (callback) callback(requestId, ok, triad, error);
 	};
 
 	QObject::connect(socket, &QLocalSocket::connected, this, [socket, payload]() {
@@ -267,45 +366,43 @@ qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callbac
 		socket->flush();
 	});
 
-	QObject::connect(
-	    socket,
-	    &QLocalSocket::readyRead,
-	    this,
-	    [this, requestId, socket, reader, callback, cleanup]() {
-		    Q_UNUSED(socket);
-		    reader->startTransaction();
-		    auto line = reader->readUntil('\n');
-		    if (!reader->commitTransaction()) return;
-		    if (line.endsWith('\n')) line.chop(1);
+	QObject::connect(socket, &QLocalSocket::readyRead, this, [this, socket, reader, complete]() {
+		Q_UNUSED(socket);
+		reader->startTransaction();
+		auto line = reader->readUntil('\n');
+		if (!reader->commitTransaction()) return;
+		if (line.endsWith('\n')) line.chop(1);
 
-		    auto error = QJsonParseError();
-		    auto root = QJsonDocument::fromJson(line, &error).object();
-		    if (error.error != QJsonParseError::NoError) {
-			    qCWarning(logTriadIpc) << "Invalid Triad IPC response:" << error.errorString();
-			    if (callback) callback(requestId, false, {}, error.errorString());
-			    cleanup();
-			    return;
-		    }
+		auto error = QJsonParseError();
+		auto root = QJsonDocument::fromJson(line, &error).object();
+		if (error.error != QJsonParseError::NoError) {
+			qCWarning(logTriadIpc) << "Invalid Triad IPC response:" << error.errorString();
+			complete(false, {}, error.errorString());
+			return;
+		}
 
-		    auto ok = root.value("ok").toBool();
-		    if (ok) this->handleLine(line);
-		    if (callback) callback(requestId, ok, root.value("triad").toObject(), root.value("error").toString());
-		    cleanup();
-	    }
-	);
+		auto ok = root.value("ok").toBool();
+		if (ok) this->handleLine(line);
+		complete(ok, root.value("triad").toObject(), root.value("error").toString());
+	});
 
 	QObject::connect(
 	    socket,
 	    &QLocalSocket::errorOccurred,
 	    this,
-	    [requestId, payload, callback, cleanup](QLocalSocket::LocalSocketError error) {
+	    [payload, complete](QLocalSocket::LocalSocketError error) {
 		    qCWarning(logTriadIpc) << "Error making Triad request:" << error << "request:" << payload;
-		    if (callback) callback(requestId, false, {}, QStringLiteral("socket error"));
-		    cleanup();
+		    complete(false, {}, QStringLiteral("socket error"));
 	    }
 	);
 
+	QObject::connect(timer, &QTimer::timeout, this, [payload, complete]() {
+		qCWarning(logTriadIpc) << "Timed out making Triad request:" << payload;
+		complete(false, {}, QStringLiteral("timeout"));
+	});
+
 	socket->connectToServer(this->mSocketPath);
+	timer->start();
 	return requestId;
 }
 
@@ -320,9 +417,7 @@ qint32 TriadIpc::makeTrackedRequest(const QJsonObject& payload) {
 
 qint32 TriadIpc::refresh() { return this->makeTrackedRequest(triadPayload("state")); }
 
-qint32 TriadIpc::refreshLayout() {
-	return this->makeTrackedRequest(triadPayload("layout-state"));
-}
+qint32 TriadIpc::refreshLayout() { return this->makeTrackedRequest(triadPayload("layout-state")); }
 
 qint32 TriadIpc::refreshWindows() { return this->makeTrackedRequest(triadPayload("windows")); }
 
@@ -348,9 +443,7 @@ qint32 TriadIpc::refreshKeyboardLayouts() {
 	return this->makeTrackedRequest(triadPayload("keyboard-layouts"));
 }
 
-qint32 TriadIpc::refreshCommands() {
-	return this->makeTrackedRequest(triadPayload("commands"));
-}
+qint32 TriadIpc::refreshCommands() { return this->makeTrackedRequest(triadPayload("commands")); }
 
 qint32 TriadIpc::sendRequest(const QString& request, const QVariantMap& payload) {
 	auto object = QJsonObject::fromVariantMap(payload);
@@ -383,6 +476,22 @@ qint32 TriadIpc::dispatchBinding(const QString& kind, const QString& binding, qi
 	return this->makeTrackedRequest(object);
 }
 
+qint32 TriadIpc::dispatchKeyBinding(const QString& binding) {
+	return this->dispatchBinding("key", binding);
+}
+
+qint32 TriadIpc::dispatchPointerBinding(const QString& binding) {
+	return this->dispatchBinding("pointer", binding);
+}
+
+qint32 TriadIpc::dispatchAxisBinding(const QString& binding, qint32 ticks) {
+	return this->dispatchBinding("axis", binding, ticks);
+}
+
+qint32 TriadIpc::dispatchGestureBinding(const QString& binding, qint32 fingers) {
+	return this->dispatchBinding("gesture", binding, fingers);
+}
+
 qint32 TriadIpc::focusWorkspace(qint32 workspaceIndex) {
 	return this->dispatch("focus-workspace", {{"workspace_idx", workspaceIndex}});
 }
@@ -398,9 +507,7 @@ qint32 TriadIpc::closeWindow(quint32 windowId) {
 	return this->dispatch("close-window");
 }
 
-qint32 TriadIpc::switchLayout() {
-	return this->makeTrackedRequest(triadPayload("switch-layout"));
-}
+qint32 TriadIpc::switchLayout() { return this->makeTrackedRequest(triadPayload("switch-layout")); }
 
 qint32 TriadIpc::setLayout(const QString& layoutId, const QVariantMap& target) {
 	auto payload = triadPayload("set-layout");
@@ -410,92 +517,92 @@ qint32 TriadIpc::setLayout(const QString& layoutId, const QVariantMap& target) {
 }
 
 qint32 TriadIpc::spawn(const QStringList& argv) {
-	return this->sendValidatedAction("spawn", {{"argv", argv}});
+	return this->dispatch("spawn", {{"argv", argv}});
 }
 
 qint32 TriadIpc::switchKeyboardLayout(const QVariant& layout) {
 	auto payload = QVariantMap();
 	if (layout.isValid() && !layout.isNull()) payload.insert("layout", layout);
-	return this->sendValidatedAction("switch-keyboard-layout", payload);
+	return this->dispatch("switch-keyboard-layout", payload);
 }
 
-qint32 TriadIpc::powerOffMonitors() { return this->sendValidatedAction("power-off-monitors"); }
+qint32 TriadIpc::powerOffMonitors() { return this->dispatch("power-off-monitors"); }
 
-qint32 TriadIpc::powerOnMonitors() { return this->sendValidatedAction("power-on-monitors"); }
+qint32 TriadIpc::powerOnMonitors() { return this->dispatch("power-on-monitors"); }
 
 qint32 TriadIpc::powerOffMonitor(const QString& output) {
-	return this->sendValidatedAction("power-off-monitor", {{"output", output}});
+	return this->dispatch("power-off-monitor", {{"output", output}});
 }
 
 qint32 TriadIpc::powerOnMonitor(const QString& output) {
-	return this->sendValidatedAction("power-on-monitor", {{"output", output}});
+	return this->dispatch("power-on-monitor", {{"output", output}});
 }
 
-qint32 TriadIpc::toggleOverview() { return this->sendValidatedAction("toggle-overview"); }
+qint32 TriadIpc::toggleOverview() { return this->dispatch("toggle-overview"); }
 
-qint32 TriadIpc::openOverview() { return this->sendValidatedAction("open-overview"); }
+qint32 TriadIpc::openOverview() { return this->dispatch("open-overview"); }
 
-qint32 TriadIpc::closeOverview() { return this->sendValidatedAction("close-overview"); }
+qint32 TriadIpc::closeOverview() { return this->dispatch("close-overview"); }
 
-qint32 TriadIpc::toggleScratchpad() { return this->sendValidatedAction("toggle-scratchpad"); }
+qint32 TriadIpc::toggleScratchpad() { return this->dispatch("toggle-scratchpad"); }
 
 qint32 TriadIpc::toggleNamedScratchpad(const QString& name) {
-	return this->sendValidatedAction("toggle-named-scratchpad", {{"name", name}});
+	return this->dispatch("toggle-named-scratchpad", {{"name", name}});
 }
 
-qint32 TriadIpc::moveToScratchpad() { return this->sendValidatedAction("move-to-scratchpad"); }
+qint32 TriadIpc::moveToScratchpad() { return this->dispatch("move-to-scratchpad"); }
 
 qint32 TriadIpc::moveToNamedScratchpad(const QString& name) {
-	return this->sendValidatedAction("move-to-named-scratchpad", {{"name", name}});
+	return this->dispatch("move-to-named-scratchpad", {{"name", name}});
 }
 
-qint32 TriadIpc::toggleFloating() { return this->sendValidatedAction("toggle-floating"); }
+qint32 TriadIpc::toggleFloating() { return this->dispatch("toggle-floating"); }
 
 qint32 TriadIpc::fullscreenWindow(quint32 windowId) {
 	auto payload = QVariantMap();
 	if (windowId != 0) payload.insert("id", windowId);
-	return this->sendValidatedAction("fullscreen-window", payload);
+	return this->dispatch("fullscreen-window", payload);
 }
 
-qint32 TriadIpc::toggleMaximized() { return this->sendValidatedAction("toggle-maximized"); }
+qint32 TriadIpc::toggleMaximized() { return this->dispatch("toggle-maximized"); }
 
-qint32 TriadIpc::minimize() { return this->sendValidatedAction("minimize"); }
+qint32 TriadIpc::minimize() { return this->dispatch("minimize"); }
 
 qint32 TriadIpc::moveToTag(quint32 tagId) {
-	return this->sendValidatedAction("move-to-tag", {{"tag", tagId}});
+	return this->dispatch("move-to-tag", {{"tag", tagId}});
 }
 
 qint32 TriadIpc::moveToWorkspace(qint32 workspaceIndex) {
-	return this->sendValidatedAction("move-to-workspace", {{"workspace_idx", workspaceIndex}});
+	return this->dispatch("move-to-workspace", {{"workspace_idx", workspaceIndex}});
 }
 
 qint32 TriadIpc::moveWindowToTag(quint32 windowId, quint32 tagId, bool follow) {
-	return this->sendValidatedAction(
+	return this->dispatch(
 	    "move-window-to-tag",
 	    {{"id", windowId}, {"tag", tagId}, {"follow", follow}}
 	);
 }
 
 qint32 TriadIpc::moveWindowToWorkspace(quint32 windowId, qint32 workspaceIndex, bool follow) {
-	return this->sendValidatedAction(
+	return this->dispatch(
 	    "move-window-to-workspace",
 	    {{"id", windowId}, {"workspace_idx", workspaceIndex}, {"follow", follow}}
 	);
 }
 
 qint32 TriadIpc::focusOutput(const QString& output) {
-	return this->sendValidatedAction("focus-output", {{"output", output}});
+	return this->dispatch("focus-output", {{"output", output}});
 }
 
 qint32 TriadIpc::moveWorkspaceToOutput(const QString& output) {
-	return this->sendValidatedAction("move-workspace-to-output", {{"output", output}});
+	return this->dispatch("move-workspace-to-output", {{"output", output}});
 }
 
 qint32 TriadIpc::moveToOutput(const QString& output) {
-	return this->sendValidatedAction("move-to-output", {{"output", output}});
+	return this->dispatch("move-to-output", {{"output", output}});
 }
 
-qint32 TriadIpc::newWorkspace() { return this->sendValidatedAction("new-workspace"); }
+qint32 TriadIpc::newWorkspace() { return this->dispatch("new-workspace"); }
 
 QVariantMap TriadIpc::commandSpec(const QString& name) const {
 	for (const auto& value: this->mCommandsCatalog.value("commands").toList()) {
@@ -510,141 +617,12 @@ QVariantMap TriadIpc::commandSpec(const QString& name) const {
 	return {};
 }
 
-bool TriadIpc::hasCommand(const QString& name) const {
-	return !this->commandSpec(name).isEmpty();
-}
-
-bool TriadIpc::hasCommandPayloadField(
-    const QVariantMap& payload,
-    const QString& key,
-    QMetaType::Type type
-) const {
-	auto value = payload.value(key);
-	if (!value.isValid() || value.isNull()) return false;
-	if (type == QMetaType::Int) return isInteger(value);
-	if (type == QMetaType::Double) return isNumeric(value);
-	if (type == QMetaType::QString) return isString(value);
-	if (type == QMetaType::Bool) return isBool(value);
-	if (type == QMetaType::QVariantList) return isList(value);
-	return value.metaType().id() == type;
-}
-
-bool TriadIpc::payloadMatchesShape(
-    const QString& commandName,
-    const QString& shape,
-    const QVariantMap& payload
-) const {
-	auto hasUint = [&payload](const QString& key) { return isPositiveUint(payload.value(key)); };
-	auto hasInt = [&payload](const QString& key) { return isInteger(payload.value(key)); };
-	auto hasNumber = [&payload](const QString& key) { return isNumeric(payload.value(key)); };
-	auto hasNonEmptyString = [&payload](const QString& key) {
-		return isNonEmptyString(payload.value(key));
-	};
-	auto optionalUint = [&payload, hasUint](const QString& key) {
-		return !payload.contains(key) || hasUint(key);
-	};
-	auto optionalInt = [&payload, hasInt](const QString& key) {
-		return !payload.contains(key) || hasInt(key);
-	};
-	auto optionalDouble = [&payload, hasNumber](const QString& key) {
-		return !payload.contains(key) || hasNumber(key);
-	};
-	auto optionalString = [&payload](const QString& key) {
-		return !payload.contains(key) || isString(payload.value(key));
-	};
-	auto optionalBool = [&payload](const QString& key) {
-		return !payload.contains(key) || isBool(payload.value(key));
-	};
-
-	if (shape == "none") return true;
-	if (shape == "optional-window-id") return optionalUint("id");
-	if (shape == "required-window-id") {
-		return hasUint("id");
-	}
-	if (shape == "window-tag-follow") {
-		return hasUint("id") && hasUint("tag") && optionalBool("follow");
-	}
-	if (shape == "window-workspace-follow") {
-		return hasUint("id") && hasUint("workspace_idx") && optionalBool("follow");
-	}
-	if (shape == "window-bool") {
-		return hasUint("id") && isBool(payload.value("value"));
-	}
-	if (shape == "tag-layout") {
-		return hasUint("tag") && hasNonEmptyString("layout");
-	}
-	if (shape == "required-tag") {
-		return hasUint("tag");
-	}
-	if (shape == "required-workspace-idx") {
-		return hasUint("workspace_idx");
-	}
-	if (shape == "required-name") {
-		return hasNonEmptyString("name");
-	}
-	if (shape == "required-output") {
-		return hasNonEmptyString("output");
-	}
-	if (shape == "required-float-delta") {
-		return hasNumber("delta");
-	}
-	if (shape == "required-int-delta") {
-		return hasInt("delta");
-	}
-	if (shape == "optional-float-delta") {
-		return optionalDouble("delta");
-	}
-	if (shape == "optional-int-delta") {
-		return optionalInt("delta");
-	}
-	if (shape == "required-float-value") {
-		return hasNumber("value") || (commandName == "set-column-width" && hasNumber("width"));
-	}
-	if (shape == "required-int-count") {
-		return hasInt("count");
-	}
-	if (shape == "move-delta") {
-		return hasInt("dx") && hasInt("dy");
-	}
-	if (shape == "resize-delta") {
-		return hasInt("dw") && hasInt("dh");
-	}
-	if (shape == "recent-advance") {
-		return optionalString("scope") && optionalString("filter");
-	}
-	if (shape == "recent-scope") {
-		return hasNonEmptyString("scope");
-	}
-	if (shape == "spawn-argv" || shape == "split-tree-mode-list") {
-		return isNonEmptyStringList(payload.value("argv"));
-	}
-	if (shape == "warp-pointer") {
-		return hasInt("x") && hasInt("y");
-	}
-	if (shape == "screenshot") {
-		if (!optionalString("path") || !optionalBool("show_pointer") || !optionalBool("write_to_disk")
-		    || !optionalBool("copy_to_clipboard")) {
-			return false;
-		}
-
-		auto writeToDisk = !payload.contains("write_to_disk") || payload.value("write_to_disk").toBool();
-		auto copyToClipboard =
-		    !payload.contains("copy_to_clipboard") || payload.value("copy_to_clipboard").toBool();
-		return writeToDisk || copyToClipboard;
-	}
-	if (shape == "keyboard-layout-target") {
-		if (!payload.contains("layout")) return true;
-		auto layout = payload.value("layout");
-		return isString(layout) || isInteger(layout);
-	}
-
-	return false;
-}
+bool TriadIpc::hasCommand(const QString& name) const { return !this->commandSpec(name).isEmpty(); }
 
 bool TriadIpc::validateAction(const QString& action, const QVariantMap& payload) const {
 	auto command = this->commandSpec(action);
 	if (command.isEmpty()) return false;
-	return this->payloadMatchesShape(
+	return payloadMatchesShape(
 	    command.value("name").toString(),
 	    command.value("arg_shape").toString(),
 	    payload
@@ -661,7 +639,9 @@ void TriadIpc::autoRefreshCommands() {
 	this->commandsAutoRefreshRequested = true;
 	this->makeRequest(
 	    triadPayload("commands"),
-	    [this](qint32, bool, const QJsonObject&, const QString&) { this->commandsAutoRefreshRequested = false; }
+	    [this](qint32, bool, const QJsonObject&, const QString&) {
+		    this->commandsAutoRefreshRequested = false;
+	    }
 	);
 }
 
@@ -687,8 +667,9 @@ void TriadIpc::handleTriadObject(const QJsonObject& triad) {
 		this->event.data = triad.toVariantMap();
 		emit this->rawEvent(&this->event);
 
-		if (eventName == "state-changed") this->handleState(triad.value("state").toObject());
-		else if (eventName == "layout-state-changed") {
+		if (eventName == "state-changed") {
+			this->handleState(triad.value("state").toObject());
+		} else if (eventName == "layout-state-changed") {
 			this->handleLayoutState(triad.value("state").toObject());
 		} else if (eventName == "window-changed") {
 			this->handleWindow(triad.value("window").toObject());
@@ -698,11 +679,15 @@ void TriadIpc::handleTriadObject(const QJsonObject& triad) {
 	}
 
 	auto type = triad.value("type").toString();
-	if (type == "state") this->handleState(triad.value("state").toObject());
-	else if (type == "layout-state") this->handleLayoutState(triad.value("state").toObject());
-	else if (type == "workspaces") this->handleWorkspaces(triad.value("workspaces").toArray());
-	else if (type == "outputs") this->handleOutputs(triad.value("outputs").toArray());
-	else if (type == "windows") {
+	if (type == "state") {
+		this->handleState(triad.value("state").toObject());
+	} else if (type == "layout-state") {
+		this->handleLayoutState(triad.value("state").toObject());
+	} else if (type == "workspaces") {
+		this->handleWorkspaces(triad.value("workspaces").toArray());
+	} else if (type == "outputs") {
+		this->handleOutputs(triad.value("outputs").toArray());
+	} else if (type == "windows") {
 		this->handleWindows(triad.value("windows").toArray());
 		this->updateDerivedState();
 	} else if (type == "focused-window") {

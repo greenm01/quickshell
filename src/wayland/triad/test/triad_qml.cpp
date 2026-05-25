@@ -5,12 +5,17 @@
 #include <qlocalserver.h>
 #include <qlocalsocket.h>
 #include <qobject.h>
+#include <qobjectdefs.h>
 #include <qqml.h>
 #include <qqmlcomponent.h>
 #include <qqmlengine.h>
 #include <qqmlextensionplugin.h>
 #include <qtemporarydir.h>
+#include <qtenvironmentvariables.h>
 #include <qtest.h>
+#include <qtestcase.h>
+#include <qtmetamacros.h>
+#include <qtypes.h>
 #include <qurl.h>
 #include <qvariant.h>
 
@@ -18,7 +23,7 @@ Q_IMPORT_QML_PLUGIN(QuickshellPlugin);
 Q_IMPORT_QML_PLUGIN(Quickshell_TriadPlugin);
 
 namespace {
-constexpr quint32 HighWindowId = 3000000000U;
+constexpr quint32 HIGH_WINDOW_ID = 3000000000U;
 
 QByteArray stateEvent() {
 	return R"({"triad":{"version":1,"event":"state-changed","state":{"version":1,)"
@@ -102,6 +107,8 @@ QByteArray handleRequest(const QByteArray& request) {
 }
 } // namespace
 
+// Qt test macros are intentionally instance-oriented and confuse generic clang-tidy checks.
+// NOLINTBEGIN(misc-include-cleaner, misc-use-internal-linkage, readability-convert-member-functions-to-static)
 class TestTriadQml: public QObject {
 	Q_OBJECT;
 
@@ -179,6 +186,10 @@ QtObject {
 			Triad.setLayout("grid", {"tag": 1}),
 			Triad.dispatch("noop", {}),
 			Triad.dispatchBinding("key", "Super+h"),
+			Triad.dispatchKeyBinding("Super+Return"),
+			Triad.dispatchPointerBinding("Super+middle"),
+			Triad.dispatchAxisBinding("Super+wheel-down", -2),
+			Triad.dispatchGestureBinding("Super+swipe-right", 4),
 			Triad.spawn(["sh", "-lc", "true"]),
 			Triad.switchKeyboardLayout("next"),
 			Triad.powerOffMonitors(),
@@ -230,11 +241,14 @@ QtObject {
 		QCOMPARE(object->property("firstWorkspaceName").toString(), QStringLiteral("main"));
 		QCOMPARE(object->property("firstOutputName").toString(), QStringLiteral("DP-1"));
 		QCOMPARE(object->property("activeTag").toInt(), 1);
-		QCOMPARE(object->property("overviewSelectedWindowId").toDouble(), static_cast<double>(HighWindowId));
+		QCOMPARE(
+		    object->property("overviewSelectedWindowId").toDouble(),
+		    static_cast<double>(HIGH_WINDOW_ID)
+		);
 		QCOMPARE(object->property("layoutCount").toInt(), 1);
 		QCOMPARE(object->property("layoutCycleSecond").toString(), QStringLiteral("grid"));
 		QCOMPARE(object->property("firstOutputPhysicalWidth").toInt(), 600);
-		QCOMPARE(object->property("focusedWindowId").toDouble(), static_cast<double>(HighWindowId));
+		QCOMPARE(object->property("focusedWindowId").toDouble(), static_cast<double>(HIGH_WINDOW_ID));
 		QCOMPARE(object->property("focusedWindowFloatingX").toInt(), 10);
 		QCOMPARE(object->property("focusedWindowSwallowedBy").toInt(), 8);
 		QCOMPARE(object->property("focusedWorkspaceColumnCount").toInt(), 1);
@@ -251,6 +265,7 @@ private:
 	QString socketPath;
 	QLocalServer server;
 };
+// NOLINTEND(misc-include-cleaner, misc-use-internal-linkage, readability-convert-member-functions-to-static)
 
 QTEST_MAIN(TestTriadQml);
 #include "triad_qml.moc"

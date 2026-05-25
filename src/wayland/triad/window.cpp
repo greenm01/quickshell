@@ -1,6 +1,11 @@
 #include "window.hpp"
-
 #include <limits>
+
+#include <qcontainerfwd.h>
+#include <qobject.h>
+#include <qstring.h>
+#include <qtmetamacros.h>
+#include <qtypes.h>
 #include <qvariant.h>
 
 #include "connection.hpp"

@@ -1,3 +1,5 @@
+#include <utility>
+
 #include <qbytearray.h>
 #include <qcontainerfwd.h>
 #include <qfile.h>
@@ -7,9 +9,14 @@
 #include <qlocalserver.h>
 #include <qlocalsocket.h>
 #include <qobject.h>
+#include <qobjectdefs.h>
 #include <qsignalspy.h>
 #include <qtemporarydir.h>
+#include <qtenvironmentvariables.h>
 #include <qtest.h>
+#include <qtestcase.h>
+#include <qtmetamacros.h>
+#include <qtypes.h>
 #include <qvariant.h>
 
 #include "../connection.hpp"
@@ -20,7 +27,7 @@
 using namespace qs::triad;
 
 namespace {
-constexpr quint32 HighWindowId = 3000000000U;
+constexpr quint32 HIGH_WINDOW_ID = 3000000000U;
 
 QByteArray ackReply() {
 	return R"({"ok":true,"triad":{"version":1,"type":"ack"}})"
@@ -78,6 +85,7 @@ QByteArray commandsReply() {
 	       R"({"name":"move-workspace-to-output","usage":"move-workspace-to-output <output>","arg_shape":"required-output","aliases":[]},)"
 	       R"({"name":"move-to-output","usage":"move-to-output <output>","arg_shape":"required-output","aliases":[]},)"
 	       R"({"name":"new-workspace","usage":"new-workspace","arg_shape":"none","aliases":[]})"
+	       R"(,{"name":"future-command","usage":"future-command <value>","arg_shape":"future-shape","aliases":[]})"
 	       R"(],"special_requests":[{"name":"layout-state"}]}}})"
 	       "\n";
 }
@@ -177,6 +185,8 @@ QByteArray handleRequest(const QByteArray& request) {
 }
 } // namespace
 
+// Qt test macros are intentionally instance-oriented and confuse generic clang-tidy checks.
+// NOLINTBEGIN(misc-include-cleaner, misc-const-correctness, misc-use-internal-linkage, readability-convert-member-functions-to-static)
 class TestTriadIpc: public QObject {
 	Q_OBJECT;
 
@@ -205,6 +215,11 @@ private slots:
 						client->write(ackReply());
 						client->write(layoutEvent());
 						client->write(stateEvent());
+					} else if (requestName == "commands" && this->holdCommandReplies) {
+						this->pendingCommandClients.push_back(client);
+						return;
+					} else if (requestName == "hang") {
+						return;
 					} else {
 						client->write(handleRequest(request));
 					}
@@ -212,6 +227,23 @@ private slots:
 				});
 			}
 		});
+	}
+
+	void typedHelpersDoNotWaitForCommandCatalog() {
+		auto* ipc = TriadIpc::instance();
+		QTRY_VERIFY(ipc->bindableConnected().value());
+		QTRY_COMPARE(this->pendingCommandClients.size(), 1);
+		QVERIFY(ipc->commandsCatalog().value("commands").toList().isEmpty());
+
+		QSignalSpy spy(ipc, &TriadIpc::requestFinished);
+		auto requestId = ipc->spawn(QStringList({"sh", "-lc", "true"}));
+		QVERIFY(requestId > 0);
+		QTRY_COMPARE(spy.size(), 1);
+		QCOMPARE(spy.at(0).at(0).toInt(), requestId);
+		QCOMPARE(spy.at(0).at(1).toBool(), true);
+		QCOMPARE(this->lastRequestPayload("action").value("action").toString(), QString("spawn"));
+
+		this->releaseCommandReplies();
 	}
 
 	void loadsInitialState() {
@@ -226,7 +258,7 @@ private slots:
 		QCOMPARE(ipc->bindableActiveTag().value(), 1);
 		QCOMPARE(ipc->bindableActiveWorkspaceIndex().value(), 1);
 		QCOMPARE(ipc->bindableOverviewOpen().value(), true);
-		QCOMPARE(ipc->bindableOverviewSelectedWindowId().value(), HighWindowId);
+		QCOMPARE(ipc->bindableOverviewSelectedWindowId().value(), HIGH_WINDOW_ID);
 		QCOMPARE(ipc->layouts().size(), 1);
 		QCOMPARE(ipc->layoutCycle(), QStringList({"scroller", "grid"}));
 		QCOMPARE(ipc->layoutCycleEntries().size(), 1);
@@ -237,7 +269,7 @@ private slots:
 		QCOMPARE(output->bindablePhysicalHeight().value(), 340);
 
 		auto* window = ipc->bindableFocusedWindow().value();
-		QCOMPARE(window->bindableId().value(), HighWindowId);
+		QCOMPARE(window->bindableId().value(), HIGH_WINDOW_ID);
 		QCOMPARE(window->bindableTitle().value(), QString("Terminal"));
 		QCOMPARE(window->bindableParentId().value(), 0U);
 		QCOMPARE(window->bindableColumnIndex().value(), 1);
@@ -317,6 +349,29 @@ private slots:
 		QTRY_COMPARE(spy.size(), 3);
 		QCOMPARE(spy.at(2).at(0).toInt(), gestureId);
 		QCOMPARE(this->lastRequestPayload("dispatch-binding").value("fingers").toInt(), 3);
+
+		auto pointerId = ipc->dispatchPointerBinding("Super+middle");
+		QTRY_COMPARE(spy.size(), 4);
+		QCOMPARE(spy.at(3).at(0).toInt(), pointerId);
+		QCOMPARE(
+		    this->lastRequestPayload("dispatch-binding").value("kind").toString(),
+		    QString("pointer")
+		);
+
+		auto keyHelperId = ipc->dispatchKeyBinding("Super+Return");
+		QTRY_COMPARE(spy.size(), 5);
+		QCOMPARE(spy.at(4).at(0).toInt(), keyHelperId);
+		QCOMPARE(this->lastRequestPayload("dispatch-binding").value("kind").toString(), QString("key"));
+
+		auto axisHelperId = ipc->dispatchAxisBinding("Super+wheel-down", -2);
+		QTRY_COMPARE(spy.size(), 6);
+		QCOMPARE(spy.at(5).at(0).toInt(), axisHelperId);
+		QCOMPARE(this->lastRequestPayload("dispatch-binding").value("ticks").toInt(), -2);
+
+		auto gestureHelperId = ipc->dispatchGestureBinding("Super+swipe-right", 4);
+		QTRY_COMPARE(spy.size(), 7);
+		QCOMPARE(spy.at(6).at(0).toInt(), gestureHelperId);
+		QCOMPARE(this->lastRequestPayload("dispatch-binding").value("fingers").toInt(), 4);
 	}
 
 	void exposesRefreshHelpers() {
@@ -367,15 +422,23 @@ private slots:
 		QVERIFY(ipc->hasCommand("kill-window"));
 		QCOMPARE(ipc->commandSpec("kill-window").value("name").toString(), QString("close-window"));
 
-		QVERIFY(ipc->validateAction("focus-window", {{"id", HighWindowId}}));
+		QVERIFY(ipc->validateAction("focus-window", {{"id", HIGH_WINDOW_ID}}));
 		QVERIFY(!ipc->validateAction("focus-window", {{"id", QString("bad")}}));
 		QVERIFY(!ipc->validateAction("focus-window", {{"id", 0}}));
 		QVERIFY(!ipc->validateAction("focus-window", {{"id", -1}}));
 		QVERIFY(!ipc->validateAction("focus-window", {{"id", 7.5}}));
-		QVERIFY(ipc->validateAction("move-window-to-tag", {{"id", HighWindowId}, {"tag", 2U}, {"follow", true}}));
-		QVERIFY(ipc->validateAction("move-window-to-workspace", {{"id", HighWindowId}, {"workspace_idx", 2U}}));
-		QVERIFY(ipc->validateAction("set-window-floating", {{"id", HighWindowId}, {"value", false}}));
-		QVERIFY(ipc->validateAction("set-layout-for-workspace", {{"tag", 2U}, {"layout", QString("grid")}}));
+		QVERIFY(ipc->validateAction(
+		    "move-window-to-tag",
+		    {{"id", HIGH_WINDOW_ID}, {"tag", 2U}, {"follow", true}}
+		));
+		QVERIFY(ipc->validateAction(
+		    "move-window-to-workspace",
+		    {{"id", HIGH_WINDOW_ID}, {"workspace_idx", 2U}}
+		));
+		QVERIFY(ipc->validateAction("set-window-floating", {{"id", HIGH_WINDOW_ID}, {"value", false}}));
+		QVERIFY(
+		    ipc->validateAction("set-layout-for-workspace", {{"tag", 2U}, {"layout", QString("grid")}})
+		);
 		QVERIFY(ipc->validateAction("layout-custom", {{"name", QString("notion")}}));
 		QVERIFY(!ipc->validateAction("layout-custom", {{"name", QString()}}));
 		QVERIFY(ipc->validateAction("power-off-monitor", {{"output", QString("DP-1")}}));
@@ -390,7 +453,10 @@ private slots:
 		QVERIFY(ipc->validateAction("switch-proportion-preset", {{"delta", -1}}));
 		QVERIFY(ipc->validateAction("move-floating", {{"dx", 12}, {"dy", -34}}));
 		QVERIFY(ipc->validateAction("resize-floating", {{"dw", 12}, {"dh", -34}}));
-		QVERIFY(ipc->validateAction("recent-window-next", {{"scope", QString("output")}, {"filter", QString("app-id")}}));
+		QVERIFY(ipc->validateAction(
+		    "recent-window-next",
+		    {{"scope", QString("output")}, {"filter", QString("app-id")}}
+		));
 		QVERIFY(ipc->validateAction("recent-window-scope", {{"scope", QString("workspace")}}));
 		QVERIFY(ipc->validateAction("spawn", {{"argv", QStringList({"kitty"})}}));
 		QVERIFY(!ipc->validateAction("spawn", {{"argv", QStringList()}}));
@@ -400,19 +466,50 @@ private slots:
 		QVERIFY(ipc->validateAction("switch-keyboard-layout", {{"layout", QString("next")}}));
 		QVERIFY(ipc->validateAction("switch-keyboard-layout", {{"layout", 1}}));
 		QVERIFY(!ipc->validateAction("switch-keyboard-layout", {{"layout", 1.5}}));
-		QVERIFY(ipc->validateAction("split-tree-layout-cycle", {{"argv", QStringList({"splith", "stacking"})}}));
+		QVERIFY(ipc->validateAction(
+		    "split-tree-layout-cycle",
+		    {{"argv", QStringList({"splith", "stacking"})}}
+		));
 		QVERIFY(ipc->validateAction("frame-resize-left", {}));
 		QVERIFY(ipc->validateAction("frame-resize-left", {{"delta", 0.05}}));
-		QVERIFY(ipc->validateAction("screenshot", {{"path", QString("/tmp/a.png")}, {"show_pointer", true}}));
-		QVERIFY(!ipc->validateAction("screenshot", {{"write_to_disk", false}, {"copy_to_clipboard", false}}));
+		QVERIFY(
+		    ipc->validateAction("screenshot", {{"path", QString("/tmp/a.png")}, {"show_pointer", true}})
+		);
+		QVERIFY(
+		    !ipc->validateAction("screenshot", {{"write_to_disk", false}, {"copy_to_clipboard", false}})
+		);
+		QVERIFY(ipc->validateAction("future-command", {{"value", QString("daemon-validated")}}));
 
 		QSignalSpy spy(ipc, &TriadIpc::requestFinished);
 		QCOMPARE(ipc->sendValidatedAction("focus-window", {{"id", QString("bad")}}), -1);
 		QCOMPARE(spy.size(), 0);
-		auto requestId = ipc->sendValidatedAction("focus-window", {{"id", HighWindowId}});
+		auto requestId = ipc->sendValidatedAction("focus-window", {{"id", HIGH_WINDOW_ID}});
 		QTRY_COMPARE(spy.size(), 1);
 		QCOMPARE(spy.at(0).at(0).toInt(), requestId);
-		QCOMPARE(this->lastRequestPayload("action").value("id").toDouble(), static_cast<double>(HighWindowId));
+		QCOMPARE(
+		    this->lastRequestPayload("action").value("id").toDouble(),
+		    static_cast<double>(HIGH_WINDOW_ID)
+		);
+
+		auto futureId =
+		    ipc->sendValidatedAction("future-command", {{"value", QString("daemon-validated")}});
+		QTRY_COMPARE(spy.size(), 2);
+		QCOMPARE(spy.at(1).at(0).toInt(), futureId);
+		QCOMPARE(
+		    this->lastRequestPayload("action").value("action").toString(),
+		    QString("future-command")
+		);
+	}
+
+	void emitsTimeoutForHungRequest() {
+		auto* ipc = TriadIpc::instance();
+		QSignalSpy spy(ipc, &TriadIpc::requestFinished);
+
+		auto requestId = ipc->sendRequest("hang");
+		QTRY_COMPARE_WITH_TIMEOUT(spy.size(), 1, 1000);
+		QCOMPARE(spy.at(0).at(0).toInt(), requestId);
+		QCOMPARE(spy.at(0).at(1).toBool(), false);
+		QCOMPARE(spy.at(0).at(3).toString(), QString("timeout"));
 	}
 
 	void clearsExplicitlyNullFocusedWindow() {
@@ -440,9 +537,20 @@ private slots:
 	}
 
 private:
-	int requestCount(const QString& name) const { return this->requestNames.count(name); }
+	[[nodiscard]] qsizetype requestCount(const QString& name) const {
+		return this->requestNames.count(name);
+	}
 
-	QJsonObject lastRequestPayload(const QString& name) const {
+	void releaseCommandReplies() {
+		this->holdCommandReplies = false;
+		for (auto* client: std::as_const(this->pendingCommandClients)) {
+			client->write(commandsReply());
+			client->flush();
+		}
+		this->pendingCommandClients.clear();
+	}
+
+	[[nodiscard]] QJsonObject lastRequestPayload(const QString& name) const {
 		for (auto i = this->requestPayloads.size() - 1; i >= 0; i--) {
 			if (this->requestPayloads.at(i).value("request").toString() == name) {
 				return this->requestPayloads.at(i);
@@ -458,7 +566,10 @@ private:
 	QList<QString> requestNames;
 	QList<QJsonObject> requestPayloads;
 	QLocalSocket* eventClient = nullptr;
+	bool holdCommandReplies = true;
+	QList<QLocalSocket*> pendingCommandClients;
 };
+// NOLINTEND(misc-include-cleaner, misc-const-correctness, misc-use-internal-linkage, readability-convert-member-functions-to-static)
 
 QTEST_MAIN(TestTriadIpc);
 #include "triad_ipc.moc"

@@ -120,6 +120,10 @@ if (HYPRLAND)
 	add_subdirectory(hyprland)
 endif()
 
+if (TRIAD_effective)
+	add_subdirectory(triad)
+endif()
+
 add_subdirectory(background_effect)
 list(APPEND WAYLAND_MODULES Quickshell.Wayland._BackgroundEffect)
 

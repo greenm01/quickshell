@@ -221,6 +221,12 @@ To disable: `-DHYPRLAND_FOCUS_GRAB=OFF`
 
 [hyprland-focus-grab-v1]: https://github.com/hyprwm/hyprland-protocols/blob/main/protocols/hyprland-focus-grab-v1.xml
 
+### Triad
+Enables interfacing with Triad's native IPC through `$TRIAD_SOCKET`.
+This feature requires Wayland and Unix socket support.
+
+To disable: `-DTRIAD=OFF`
+
 ### i3/Sway
 Enables i3 and Sway specific features, does not have any dependency on Wayland or x11.
 
@@ -230,12 +236,6 @@ To disable: `-DI3=OFF`
 Enables interfacing with i3 and Sway's IPC.
 
 To disable: `-DI3_IPC=OFF`
-
-### Triad
-Enables interfacing with Triad's native IPC through `$TRIAD_SOCKET`.
-This feature requires Unix socket support.
-
-To disable: `-DTRIAD=OFF`
 
 ## Building
 *For developers and prospective contributors: See [CONTRIBUTING.md](CONTRIBUTING.md).*

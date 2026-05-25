@@ -13,8 +13,8 @@
 #include <qtimer.h>
 #include <qvariant.h>
 
-#include "../core/model.hpp"
-#include "../core/streamreader.hpp"
+#include "../../core/model.hpp"
+#include "../../core/streamreader.hpp"
 
 namespace qs::triad {
 
@@ -71,6 +71,10 @@ public:
 	qint32 sendAction(const QString& action, const QVariantMap& payload = {});
 	qint32 dispatch(const QString& action, const QVariantMap& payload = {});
 	qint32 dispatchBinding(const QString& kind, const QString& binding, qint32 amount = 1);
+	qint32 dispatchKeyBinding(const QString& binding);
+	qint32 dispatchPointerBinding(const QString& binding);
+	qint32 dispatchAxisBinding(const QString& binding, qint32 ticks = 1);
+	qint32 dispatchGestureBinding(const QString& binding, qint32 fingers);
 	qint32 focusWorkspace(qint32 workspaceIndex);
 	qint32 focusTag(quint32 tagId);
 	qint32 focusWindow(quint32 windowId);
@@ -188,17 +192,6 @@ private:
 	void updateDerivedState();
 	void autoRefreshCommands();
 	void setSocketPath(const QString& path);
-	[[nodiscard]] bool payloadMatchesShape(
-	    const QString& commandName,
-	    const QString& shape,
-	    const QVariantMap& payload
-	) const;
-	[[nodiscard]] bool hasCommandPayloadField(
-	    const QVariantMap& payload,
-	    const QString& key,
-	    QMetaType::Type type
-	) const;
-	[[nodiscard]] QString discoverSocketPath() const;
 
 	QLocalSocket eventSocket;
 	StreamReader eventReader;

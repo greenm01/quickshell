@@ -1,11 +1,13 @@
 #include "qml.hpp"
 
+#include <qcontainerfwd.h>
 #include <qobject.h>
 #include <qproperty.h>
 #include <qstringlist.h>
+#include <qtypes.h>
 #include <qvariant.h>
 
-#include "../core/model.hpp"
+#include "../../core/model.hpp"
 #include "connection.hpp"
 
 namespace qs::triad {
@@ -38,14 +40,10 @@ TriadIpcQml::TriadIpcQml() {
 qint32 TriadIpcQml::refresh() { return TriadIpc::instance()->refresh(); }
 qint32 TriadIpcQml::refreshLayout() { return TriadIpc::instance()->refreshLayout(); }
 qint32 TriadIpcQml::refreshWindows() { return TriadIpc::instance()->refreshWindows(); }
-qint32 TriadIpcQml::refreshCapabilities() {
-	return TriadIpc::instance()->refreshCapabilities();
-}
+qint32 TriadIpcQml::refreshCapabilities() { return TriadIpc::instance()->refreshCapabilities(); }
 qint32 TriadIpcQml::refreshWorkspaces() { return TriadIpc::instance()->refreshWorkspaces(); }
 qint32 TriadIpcQml::refreshOutputs() { return TriadIpc::instance()->refreshOutputs(); }
-qint32 TriadIpcQml::refreshFocusedWindow() {
-	return TriadIpc::instance()->refreshFocusedWindow();
-}
+qint32 TriadIpcQml::refreshFocusedWindow() { return TriadIpc::instance()->refreshFocusedWindow(); }
 qint32 TriadIpcQml::refreshOverview() { return TriadIpc::instance()->refreshOverview(); }
 qint32 TriadIpcQml::refreshKeyboardLayouts() {
 	return TriadIpc::instance()->refreshKeyboardLayouts();
@@ -60,12 +58,20 @@ qint32 TriadIpcQml::sendAction(const QString& action, const QVariantMap& payload
 qint32 TriadIpcQml::dispatch(const QString& action, const QVariantMap& payload) {
 	return TriadIpc::instance()->dispatch(action, payload);
 }
-qint32 TriadIpcQml::dispatchBinding(
-    const QString& kind,
-    const QString& binding,
-    qint32 amount
-) {
+qint32 TriadIpcQml::dispatchBinding(const QString& kind, const QString& binding, qint32 amount) {
 	return TriadIpc::instance()->dispatchBinding(kind, binding, amount);
+}
+qint32 TriadIpcQml::dispatchKeyBinding(const QString& binding) {
+	return TriadIpc::instance()->dispatchKeyBinding(binding);
+}
+qint32 TriadIpcQml::dispatchPointerBinding(const QString& binding) {
+	return TriadIpc::instance()->dispatchPointerBinding(binding);
+}
+qint32 TriadIpcQml::dispatchAxisBinding(const QString& binding, qint32 ticks) {
+	return TriadIpc::instance()->dispatchAxisBinding(binding, ticks);
+}
+qint32 TriadIpcQml::dispatchGestureBinding(const QString& binding, qint32 fingers) {
+	return TriadIpc::instance()->dispatchGestureBinding(binding, fingers);
 }
 qint32 TriadIpcQml::focusWorkspace(qint32 workspaceIndex) {
 	return TriadIpc::instance()->focusWorkspace(workspaceIndex);
@@ -110,20 +116,14 @@ qint32 TriadIpcQml::fullscreenWindow(quint32 windowId) {
 }
 qint32 TriadIpcQml::toggleMaximized() { return TriadIpc::instance()->toggleMaximized(); }
 qint32 TriadIpcQml::minimize() { return TriadIpc::instance()->minimize(); }
-qint32 TriadIpcQml::moveToTag(quint32 tagId) {
-	return TriadIpc::instance()->moveToTag(tagId);
-}
+qint32 TriadIpcQml::moveToTag(quint32 tagId) { return TriadIpc::instance()->moveToTag(tagId); }
 qint32 TriadIpcQml::moveToWorkspace(qint32 workspaceIndex) {
 	return TriadIpc::instance()->moveToWorkspace(workspaceIndex);
 }
 qint32 TriadIpcQml::moveWindowToTag(quint32 windowId, quint32 tagId, bool follow) {
 	return TriadIpc::instance()->moveWindowToTag(windowId, tagId, follow);
 }
-qint32 TriadIpcQml::moveWindowToWorkspace(
-    quint32 windowId,
-    qint32 workspaceIndex,
-    bool follow
-) {
+qint32 TriadIpcQml::moveWindowToWorkspace(quint32 windowId, qint32 workspaceIndex, bool follow) {
 	return TriadIpc::instance()->moveWindowToWorkspace(windowId, workspaceIndex, follow);
 }
 qint32 TriadIpcQml::focusOutput(const QString& output) {
@@ -139,9 +139,7 @@ qint32 TriadIpcQml::newWorkspace() { return TriadIpc::instance()->newWorkspace()
 QVariantMap TriadIpcQml::commandSpec(const QString& name) {
 	return TriadIpc::instance()->commandSpec(name);
 }
-bool TriadIpcQml::hasCommand(const QString& name) {
-	return TriadIpc::instance()->hasCommand(name);
-}
+bool TriadIpcQml::hasCommand(const QString& name) { return TriadIpc::instance()->hasCommand(name); }
 bool TriadIpcQml::validateAction(const QString& action, const QVariantMap& payload) {
 	return TriadIpc::instance()->validateAction(action, payload);
 }

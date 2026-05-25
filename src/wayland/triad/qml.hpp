@@ -5,8 +5,8 @@
 #include <qtmetamacros.h>
 #include <qvariant.h>
 
-#include "../core/doc.hpp"
-#include "../core/model.hpp"
+#include "../../core/doc.hpp"
+#include "../../core/model.hpp"
 #include "connection.hpp"
 #include "output.hpp"
 #include "window.hpp"
@@ -95,6 +95,14 @@ public:
 	/// Dispatch a configured Triad binding without injecting raw input.
 	Q_INVOKABLE static qint32
 	dispatchBinding(const QString& kind, const QString& binding, qint32 amount = 1);
+	/// Dispatch a configured key binding.
+	Q_INVOKABLE static qint32 dispatchKeyBinding(const QString& binding);
+	/// Dispatch a configured pointer binding.
+	Q_INVOKABLE static qint32 dispatchPointerBinding(const QString& binding);
+	/// Dispatch a configured axis binding.
+	Q_INVOKABLE static qint32 dispatchAxisBinding(const QString& binding, qint32 ticks = 1);
+	/// Dispatch a configured gesture binding.
+	Q_INVOKABLE static qint32 dispatchGestureBinding(const QString& binding, qint32 fingers);
 	/// Focus a workspace by compact index.
 	Q_INVOKABLE static qint32 focusWorkspace(qint32 workspaceIndex);
 	/// Focus a workspace by stable tag ID.
