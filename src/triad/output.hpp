@@ -36,6 +36,10 @@ class TriadOutput: public QObject {
 	Q_PROPERTY(qreal scale READ default NOTIFY scaleChanged BINDABLE bindableScale);
 	/// Refresh rate in mHz.
 	Q_PROPERTY(qint32 refreshRate READ default NOTIFY refreshRateChanged BINDABLE bindableRefreshRate);
+	/// Physical output width in millimeters.
+	Q_PROPERTY(qint32 physicalWidth READ default NOTIFY physicalWidthChanged BINDABLE bindablePhysicalWidth);
+	/// Physical output height in millimeters.
+	Q_PROPERTY(qint32 physicalHeight READ default NOTIFY physicalHeightChanged BINDABLE bindablePhysicalHeight);
 	/// Output transform name.
 	Q_PROPERTY(QString transform READ default NOTIFY transformChanged BINDABLE bindableTransform);
 	/// True when this output contains the focused workspace.
@@ -65,6 +69,8 @@ public:
 	[[nodiscard]] QBindable<qint32> bindableHeight() { return &this->bHeight; }
 	[[nodiscard]] QBindable<qreal> bindableScale() { return &this->bScale; }
 	[[nodiscard]] QBindable<qint32> bindableRefreshRate() { return &this->bRefreshRate; }
+	[[nodiscard]] QBindable<qint32> bindablePhysicalWidth() { return &this->bPhysicalWidth; }
+	[[nodiscard]] QBindable<qint32> bindablePhysicalHeight() { return &this->bPhysicalHeight; }
 	[[nodiscard]] QBindable<QString> bindableTransform() { return &this->bTransform; }
 	[[nodiscard]] QBindable<bool> bindableFocused() { return &this->bFocused; }
 	[[nodiscard]] QBindable<TriadWorkspace*> bindableActiveWorkspace() {
@@ -83,6 +89,8 @@ signals:
 	void heightChanged();
 	void scaleChanged();
 	void refreshRateChanged();
+	void physicalWidthChanged();
+	void physicalHeightChanged();
 	void transformChanged();
 	void focusedChanged();
 	void activeWorkspaceChanged();
@@ -103,6 +111,8 @@ private:
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, qint32, bHeight, &TriadOutput::heightChanged);
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TriadOutput, qreal, bScale, 1, &TriadOutput::scaleChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, qint32, bRefreshRate, &TriadOutput::refreshRateChanged);
+	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, qint32, bPhysicalWidth, &TriadOutput::physicalWidthChanged);
+	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, qint32, bPhysicalHeight, &TriadOutput::physicalHeightChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, QString, bTransform, &TriadOutput::transformChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, bool, bFocused, &TriadOutput::focusedChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, TriadWorkspace*, bActiveWorkspace, &TriadOutput::activeWorkspaceChanged);

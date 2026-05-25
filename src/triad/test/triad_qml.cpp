@@ -21,16 +21,19 @@ namespace {
 QByteArray stateEvent() {
 	return R"({"triad":{"version":1,"event":"state-changed","state":{"version":1,)"
 	       R"("capabilities":{"event_stream":true,"state":true},)"
-	       R"("overview":{"is_open":false,"selected_window_id":null},)"
+	       R"("overview":{"is_open":true,"selected_window_id":7},)"
 	       R"("keyboard_layouts":["us"],"current_keyboard_layout_idx":0,)"
-	       R"("layout":{"version":1,"layouts":[],"layout_cycle":[],"layout_cycle_entries":[],)"
+	       R"("layout":{"version":1,"layouts":[{"kind":"builtin","id":"scroller"}],)"
+	       R"("layout_cycle":["scroller","grid"],)"
+	       R"("layout_cycle_entries":[{"kind":"builtin","id":"scroller"}],)"
 	       R"("active_tag":1,"active_workspace_idx":1,"workspaces":[)"
 	       R"({"tag_id":1,"workspace_idx":1,"name":"main","output":"DP-1",)"
 	       R"("layout":"scroller","layout_kind":"columns","runtime_kind":"scroller",)"
 	       R"("layout_source":"core","fallback_layout":"","is_configured":true,)"
 	       R"("is_active":true,"is_output_visible":true,"is_urgent":false,)"
-	       R"("occupied":true,"focused_window_id":7,"columns":[],"frames":[],)"
-	       R"("bsp_nodes":[],"split_nodes":[],"master_count":1,"master_split_ratio":0.5}]},)"
+	       R"("occupied":true,"focused_window_id":7,"columns":[{"idx":1,"windows":[7]}],)"
+	       R"("frames":[],"bsp_nodes":[],"split_nodes":[],"master_count":1,"master_split_ratio":0.5,)"
+	       R"("viewport":{"target_x":1,"current_x":0.5,"target_y":0,"current_y":0}}]},)"
 	       R"("outputs":[{"id":1,"name":"DP-1","connected":true,"is_primary":true,)"
 	       R"("refresh_rate":60000,"physical_width":600,"physical_height":340,)"
 	       R"("scale":1,"transform":"Normal","geometry":{"x":0,"y":0,"width":1920,"height":1080}}],)"
@@ -39,16 +42,27 @@ QByteArray stateEvent() {
 	       R"("position":{"column_idx":1,"window_idx":1},"is_focused":true,)"
 	       R"("is_floating":false,"is_maximized":false,"is_minimized":false,)"
 	       R"("is_sticky":false,"is_overlay":false,"is_unmanaged_global":false,)"
-	       R"("is_fullscreen":false,"fullscreen_output":null,"width_proportion":1,)"
-	       R"("height_proportion":1,"actual_size":{"width":100,"height":100},)"
-	       R"("floating_geometry":{"x":0,"y":0,"width":100,"height":100},)"
+	       R"("is_fullscreen":false,"fullscreen_output":1,"width_proportion":0.75,)"
+	       R"("height_proportion":0.5,"actual_size":{"width":100,"height":90},)"
+	       R"("floating_geometry":{"x":10,"y":20,"width":300,"height":200},)"
 	       R"("keyboard_shortcuts_inhibit":false,"idle_inhibit":"none",)"
-	       R"("is_terminal":true,"allow_swallow":true,"swallowed_by":null,"swallowing":null}]}}})"
+	       R"("is_terminal":true,"allow_swallow":true,"swallowed_by":8,"swallowing":9}]}}})"
 	       "\n";
 }
 
 QByteArray ack() {
 	return R"({"ok":true,"triad":{"version":1,"type":"ack"}})"
+	       "\n";
+}
+
+QByteArray handleRequest(const QByteArray& request) {
+	auto root = QJsonDocument::fromJson(request.trimmed()).object();
+	auto triad = root.value("triad").toObject();
+	if (triad.value("request").toString() != "set-layout") return ack();
+
+	auto target = triad.value("target").toObject();
+	if (target.contains("tag") || target.contains("workspace_idx")) return ack();
+	return R"({"ok":false,"error":"target must contain tag or workspace_idx"})"
 	       "\n";
 }
 } // namespace
@@ -73,7 +87,7 @@ private slots:
 						client->write(ack());
 						client->write(stateEvent());
 					} else {
-						client->write(ack());
+						client->write(handleRequest(request));
 					}
 					client->flush();
 				});
@@ -100,6 +114,14 @@ QtObject {
 	property string focusedLayout: Triad.focusedWorkspace ? Triad.focusedWorkspace.layout : ""
 	property string firstWorkspaceName: Triad.workspaces.values.length > 0 ? Triad.workspaces.values[0].name : ""
 	property string firstOutputName: Triad.outputs.values.length > 0 ? Triad.outputs.values[0].name : ""
+	property int activeTag: Triad.activeTag
+	property int overviewSelectedWindowId: Triad.overviewSelectedWindowId
+	property int layoutCount: Triad.layouts.length
+	property string layoutCycleSecond: Triad.layoutCycle.length > 1 ? Triad.layoutCycle[1] : ""
+	property int firstOutputPhysicalWidth: Triad.outputs.values.length > 0 ? Triad.outputs.values[0].physicalWidth : -1
+	property int focusedWindowFloatingX: Triad.focusedWindow ? Triad.focusedWindow.floatingX : -1
+	property int focusedWindowSwallowedBy: Triad.focusedWindow ? Triad.focusedWindow.swallowedBy : -1
+	property int focusedWorkspaceColumnCount: Triad.focusedWorkspace ? Triad.focusedWorkspace.columns.length : -1
 
 	function exerciseActions() {
 		Triad.focusWorkspace(1)
@@ -107,7 +129,7 @@ QtObject {
 		Triad.focusWindow(7)
 		Triad.closeWindow(7)
 		Triad.switchLayout()
-		Triad.setLayout("grid", {"tag_id": 1})
+		Triad.setLayout("grid", {"tag": 1})
 		Triad.dispatch("noop", {})
 	}
 }
@@ -128,6 +150,14 @@ QtObject {
 		QCOMPARE(object->property("focusedLayout").toString(), QStringLiteral("scroller"));
 		QCOMPARE(object->property("firstWorkspaceName").toString(), QStringLiteral("main"));
 		QCOMPARE(object->property("firstOutputName").toString(), QStringLiteral("DP-1"));
+		QCOMPARE(object->property("activeTag").toInt(), 1);
+		QCOMPARE(object->property("overviewSelectedWindowId").toInt(), 7);
+		QCOMPARE(object->property("layoutCount").toInt(), 1);
+		QCOMPARE(object->property("layoutCycleSecond").toString(), QStringLiteral("grid"));
+		QCOMPARE(object->property("firstOutputPhysicalWidth").toInt(), 600);
+		QCOMPARE(object->property("focusedWindowFloatingX").toInt(), 10);
+		QCOMPARE(object->property("focusedWindowSwallowedBy").toInt(), 8);
+		QCOMPARE(object->property("focusedWorkspaceColumnCount").toInt(), 1);
 		QVERIFY(QMetaObject::invokeMethod(object, "exerciseActions"));
 
 		delete object;

@@ -1,5 +1,6 @@
 #include "connection.hpp"
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include <qcontainerfwd.h>
@@ -55,6 +56,19 @@ QStringList stringListFromVariant(const QVariant& value) {
 		result.push_back(item.toString());
 	}
 	return result;
+}
+
+QStringList stringListFromJson(const QJsonValue& value) {
+	auto result = QStringList();
+	for (const auto& item: value.toArray()) {
+		result.push_back(item.toString());
+	}
+	return result;
+}
+
+qint32 intOrInvalid(const QJsonObject& object, const QString& key) {
+	auto value = object.value(key);
+	return value.isUndefined() || value.isNull() ? -1 : value.toInt(-1);
 }
 } // namespace
 
@@ -162,12 +176,16 @@ void TriadIpc::eventSocketReady() {
 	}
 }
 
-void TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callback) {
+qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callback) {
+	auto requestId = this->nextRequestId++;
 	auto* socket = new QLocalSocket(this);
 	auto* reader = new StreamReader();
 	reader->setDevice(socket);
 
-	auto cleanup = [socket, reader]() {
+	auto cleaned = std::make_shared<bool>(false);
+	auto cleanup = [socket, reader, cleaned]() {
+		if (*cleaned) return;
+		*cleaned = true;
 		delete reader;
 		socket->deleteLater();
 	};
@@ -182,6 +200,7 @@ void TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callback)
 	    &QLocalSocket::readyRead,
 	    this,
 	    [this, socket, reader, callback, cleanup]() {
+		    Q_UNUSED(socket);
 		    reader->startTransaction();
 		    auto line = reader->readUntil('\n');
 		    if (!reader->commitTransaction()) return;
@@ -191,13 +210,14 @@ void TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callback)
 		    auto root = QJsonDocument::fromJson(line, &error).object();
 		    if (error.error != QJsonParseError::NoError) {
 			    qCWarning(logTriadIpc) << "Invalid Triad IPC response:" << error.errorString();
-			    if (callback) callback(false, {});
+			    if (callback) callback(false, {}, error.errorString());
 			    cleanup();
 			    return;
 		    }
 
-		    if (root.value("ok").toBool()) this->handleLine(line);
-		    if (callback) callback(root.value("ok").toBool(), root.value("triad").toObject());
+		    auto ok = root.value("ok").toBool();
+		    if (ok) this->handleLine(line);
+		    if (callback) callback(ok, root.value("triad").toObject(), root.value("error").toString());
 		    cleanup();
 	    }
 	);
@@ -208,12 +228,13 @@ void TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callback)
 	    this,
 	    [payload, callback, cleanup](QLocalSocket::LocalSocketError error) {
 		    qCWarning(logTriadIpc) << "Error making Triad request:" << error << "request:" << payload;
-		    if (callback) callback(false, {});
+		    if (callback) callback(false, {}, QStringLiteral("socket error"));
 		    cleanup();
 	    }
 	);
 
 	socket->connectToServer(this->mSocketPath);
+	return requestId;
 }
 
 void TriadIpc::refresh() { this->makeRequest(triadPayload("state")); }
@@ -221,6 +242,33 @@ void TriadIpc::refresh() { this->makeRequest(triadPayload("state")); }
 void TriadIpc::refreshLayout() { this->makeRequest(triadPayload("layout-state")); }
 
 void TriadIpc::refreshWindows() { this->makeRequest(triadPayload("windows")); }
+
+qint32 TriadIpc::sendRequest(const QString& request, const QVariantMap& payload) {
+	auto object = QJsonObject::fromVariantMap(payload);
+	object.insert("request", request);
+	auto requestIdPtr = std::make_shared<qint32>(-1);
+	*requestIdPtr = this->makeRequest(
+	    object,
+	    [this, requestIdPtr](bool ok, const QJsonObject& triad, const QString& error) {
+		    emit this->requestFinished(*requestIdPtr, ok, triad.toVariantMap(), error);
+	    }
+	);
+	return *requestIdPtr;
+}
+
+qint32 TriadIpc::sendAction(const QString& action, const QVariantMap& payload) {
+	auto object = QJsonObject::fromVariantMap(payload);
+	object.insert("request", "action");
+	object.insert("action", action);
+	auto requestIdPtr = std::make_shared<qint32>(-1);
+	*requestIdPtr = this->makeRequest(
+	    object,
+	    [this, requestIdPtr](bool ok, const QJsonObject& triad, const QString& error) {
+		    emit this->requestFinished(*requestIdPtr, ok, triad.toVariantMap(), error);
+	    }
+	);
+	return *requestIdPtr;
+}
 
 void TriadIpc::dispatch(const QString& action, const QVariantMap& payload) {
 	auto object = QJsonObject::fromVariantMap(payload);
@@ -292,16 +340,22 @@ void TriadIpc::handleTriadObject(const QJsonObject& triad) {
 		this->handleWindows(triad.value("windows").toArray());
 		this->updateDerivedState();
 	} else if (type == "focused-window") {
-		this->handleWindow(triad.value("window").toObject());
+		if (triad.value("window").isObject()) this->handleWindow(triad.value("window").toObject());
+		else this->bFocusedWindow = nullptr;
 		this->updateDerivedState();
 	} else if (type == "capabilities") {
 		this->mCapabilities = triad.value("capabilities").toObject().toVariantMap();
 		emit this->capabilitiesChanged();
+	} else if (type == "overview-state") {
+		this->handleOverview(triad.value("overview").toObject());
 	} else if (type == "keyboard-layouts") {
 		auto layouts = triad.value("keyboard_layouts").toObject().toVariantMap();
 		this->mKeyboardLayouts = stringListFromVariant(layouts.value("names"));
 		this->bCurrentKeyboardLayoutIndex = intOrInvalid(layouts, "current_idx");
 		emit this->keyboardLayoutsChanged();
+	} else if (type == "commands") {
+		this->mCommandsCatalog = triad.value("catalog").toObject().toVariantMap();
+		emit this->commandsCatalogChanged();
 	}
 }
 
@@ -309,8 +363,7 @@ void TriadIpc::handleState(const QJsonObject& state) {
 	this->mCapabilities = state.value("capabilities").toObject().toVariantMap();
 	emit this->capabilitiesChanged();
 
-	auto overview = state.value("overview").toObject();
-	this->bOverviewOpen = overview.value("is_open").toBool();
+	this->handleOverview(state.value("overview").toObject());
 
 	this->mKeyboardLayouts = stringListFromVariant(state.value("keyboard_layouts").toVariant());
 	this->bCurrentKeyboardLayoutIndex = state.value("current_keyboard_layout_idx").toInt(-1);
@@ -323,8 +376,21 @@ void TriadIpc::handleState(const QJsonObject& state) {
 }
 
 void TriadIpc::handleLayoutState(const QJsonObject& state) {
+	this->mLayouts = state.value("layouts").toVariant().toList();
+	emit this->layoutsChanged();
+	this->mLayoutCycle = stringListFromJson(state.value("layout_cycle"));
+	emit this->layoutCycleChanged();
+	this->mLayoutCycleEntries = state.value("layout_cycle_entries").toVariant().toList();
+	emit this->layoutCycleEntriesChanged();
+	this->bActiveTag = intOrInvalid(state, "active_tag");
+	this->bActiveWorkspaceIndex = intOrInvalid(state, "active_workspace_idx");
 	this->handleWorkspaces(state.value("workspaces").toArray());
 	this->updateDerivedState();
+}
+
+void TriadIpc::handleOverview(const QJsonObject& overview) {
+	this->bOverviewOpen = overview.value("is_open").toBool();
+	this->bOverviewSelectedWindowId = intOrInvalid(overview, "selected_window_id");
 }
 
 void TriadIpc::handleWorkspaces(const QJsonArray& workspaces) {

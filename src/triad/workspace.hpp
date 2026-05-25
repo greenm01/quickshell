@@ -30,6 +30,12 @@ class TriadWorkspace: public QObject {
 	Q_PROPERTY(QString layoutKind READ default NOTIFY layoutKindChanged BINDABLE bindableLayoutKind);
 	/// Runtime layout kind currently used by Triad.
 	Q_PROPERTY(QString runtimeKind READ default NOTIFY runtimeKindChanged BINDABLE bindableRuntimeKind);
+	/// Source of the current layout.
+	Q_PROPERTY(QString layoutSource READ default NOTIFY layoutSourceChanged BINDABLE bindableLayoutSource);
+	/// Fallback layout ID used by custom/native layouts.
+	Q_PROPERTY(QString fallbackLayout READ default NOTIFY fallbackLayoutChanged BINDABLE bindableFallbackLayout);
+	/// True when this workspace is configured.
+	Q_PROPERTY(bool configured READ default NOTIFY configuredChanged BINDABLE bindableConfigured);
 	/// True when this workspace is the focused Triad workspace.
 	Q_PROPERTY(bool active READ default NOTIFY activeChanged BINDABLE bindableActive);
 	/// True when this workspace is visible on an output.
@@ -46,6 +52,16 @@ class TriadWorkspace: public QObject {
 	Q_PROPERTY(qint32 masterCount READ default NOTIFY masterCountChanged BINDABLE bindableMasterCount);
 	/// Master area split ratio for layouts that expose one.
 	Q_PROPERTY(qreal masterSplitRatio READ default NOTIFY masterSplitRatioChanged BINDABLE bindableMasterSplitRatio);
+	/// Scroller column data for this workspace.
+	Q_PROPERTY(QVariantList columns READ columns NOTIFY columnsChanged);
+	/// Frame-tree data for this workspace.
+	Q_PROPERTY(QVariantList frames READ frames NOTIFY framesChanged);
+	/// BSP-tree data for this workspace.
+	Q_PROPERTY(QVariantList bspNodes READ bspNodes NOTIFY bspNodesChanged);
+	/// Split-tree data for this workspace.
+	Q_PROPERTY(QVariantList splitNodes READ splitNodes NOTIFY splitNodesChanged);
+	/// Viewport offsets for layouts that expose them.
+	Q_PROPERTY(QVariantMap viewport READ viewport NOTIFY viewportChanged);
 	/// Last JSON object received for this workspace, as a JavaScript object.
 	Q_PROPERTY(QVariantMap lastIpcObject READ lastIpcObject NOTIFY lastIpcObjectChanged);
 	// clang-format on
@@ -70,6 +86,9 @@ public:
 	[[nodiscard]] QBindable<QString> bindableLayout() { return &this->bLayout; }
 	[[nodiscard]] QBindable<QString> bindableLayoutKind() { return &this->bLayoutKind; }
 	[[nodiscard]] QBindable<QString> bindableRuntimeKind() { return &this->bRuntimeKind; }
+	[[nodiscard]] QBindable<QString> bindableLayoutSource() { return &this->bLayoutSource; }
+	[[nodiscard]] QBindable<QString> bindableFallbackLayout() { return &this->bFallbackLayout; }
+	[[nodiscard]] QBindable<bool> bindableConfigured() { return &this->bConfigured; }
 	[[nodiscard]] QBindable<bool> bindableActive() { return &this->bActive; }
 	[[nodiscard]] QBindable<bool> bindableOutputVisible() { return &this->bOutputVisible; }
 	[[nodiscard]] QBindable<bool> bindableOccupied() { return &this->bOccupied; }
@@ -78,6 +97,11 @@ public:
 	[[nodiscard]] QBindable<qint32> bindableFocusedWindowId() { return &this->bFocusedWindowId; }
 	[[nodiscard]] QBindable<qint32> bindableMasterCount() { return &this->bMasterCount; }
 	[[nodiscard]] QBindable<qreal> bindableMasterSplitRatio() { return &this->bMasterSplitRatio; }
+	[[nodiscard]] QVariantList columns() const;
+	[[nodiscard]] QVariantList frames() const;
+	[[nodiscard]] QVariantList bspNodes() const;
+	[[nodiscard]] QVariantList splitNodes() const;
+	[[nodiscard]] QVariantMap viewport() const;
 	[[nodiscard]] QVariantMap lastIpcObject() const;
 
 signals:
@@ -88,6 +112,9 @@ signals:
 	void layoutChanged();
 	void layoutKindChanged();
 	void runtimeKindChanged();
+	void layoutSourceChanged();
+	void fallbackLayoutChanged();
+	void configuredChanged();
 	void activeChanged();
 	void outputVisibleChanged();
 	void occupiedChanged();
@@ -96,11 +123,21 @@ signals:
 	void focusedWindowIdChanged();
 	void masterCountChanged();
 	void masterSplitRatioChanged();
+	void columnsChanged();
+	void framesChanged();
+	void bspNodesChanged();
+	void splitNodesChanged();
+	void viewportChanged();
 	void lastIpcObjectChanged();
 
 private:
 	TriadIpc* ipc;
 	QVariantMap mLastIpcObject;
+	QVariantList mColumns;
+	QVariantList mFrames;
+	QVariantList mBspNodes;
+	QVariantList mSplitNodes;
+	QVariantMap mViewport;
 
 	// clang-format off
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TriadWorkspace, qint32, bTagId, -1, &TriadWorkspace::tagIdChanged);
@@ -110,6 +147,9 @@ private:
 	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, QString, bLayout, &TriadWorkspace::layoutChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, QString, bLayoutKind, &TriadWorkspace::layoutKindChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, QString, bRuntimeKind, &TriadWorkspace::runtimeKindChanged);
+	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, QString, bLayoutSource, &TriadWorkspace::layoutSourceChanged);
+	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, QString, bFallbackLayout, &TriadWorkspace::fallbackLayoutChanged);
+	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, bool, bConfigured, &TriadWorkspace::configuredChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, bool, bActive, &TriadWorkspace::activeChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, bool, bOutputVisible, &TriadWorkspace::outputVisibleChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadWorkspace, bool, bOccupied, &TriadWorkspace::occupiedChanged);

@@ -21,15 +21,29 @@ TriadIpcQml::TriadIpcQml() {
 	QObject::connect(instance, &TriadIpc::focusedOutputChanged, this, &TriadIpcQml::focusedOutputChanged);
 	QObject::connect(instance, &TriadIpc::focusedWindowChanged, this, &TriadIpcQml::focusedWindowChanged);
 	QObject::connect(instance, &TriadIpc::overviewOpenChanged, this, &TriadIpcQml::overviewOpenChanged);
+	QObject::connect(instance, &TriadIpc::overviewSelectedWindowIdChanged, this, &TriadIpcQml::overviewSelectedWindowIdChanged);
+	QObject::connect(instance, &TriadIpc::activeTagChanged, this, &TriadIpcQml::activeTagChanged);
+	QObject::connect(instance, &TriadIpc::activeWorkspaceIndexChanged, this, &TriadIpcQml::activeWorkspaceIndexChanged);
+	QObject::connect(instance, &TriadIpc::layoutsChanged, this, &TriadIpcQml::layoutsChanged);
+	QObject::connect(instance, &TriadIpc::layoutCycleChanged, this, &TriadIpcQml::layoutCycleChanged);
+	QObject::connect(instance, &TriadIpc::layoutCycleEntriesChanged, this, &TriadIpcQml::layoutCycleEntriesChanged);
 	QObject::connect(instance, &TriadIpc::keyboardLayoutsChanged, this, &TriadIpcQml::keyboardLayoutsChanged);
 	QObject::connect(instance, &TriadIpc::currentKeyboardLayoutIndexChanged, this, &TriadIpcQml::currentKeyboardLayoutIndexChanged);
+	QObject::connect(instance, &TriadIpc::commandsCatalogChanged, this, &TriadIpcQml::commandsCatalogChanged);
 	QObject::connect(instance, &TriadIpc::rawEvent, this, &TriadIpcQml::rawEvent);
+	QObject::connect(instance, &TriadIpc::requestFinished, this, &TriadIpcQml::requestFinished);
 	// clang-format on
 }
 
 void TriadIpcQml::refresh() { TriadIpc::instance()->refresh(); }
 void TriadIpcQml::refreshLayout() { TriadIpc::instance()->refreshLayout(); }
 void TriadIpcQml::refreshWindows() { TriadIpc::instance()->refreshWindows(); }
+qint32 TriadIpcQml::sendRequest(const QString& request, const QVariantMap& payload) {
+	return TriadIpc::instance()->sendRequest(request, payload);
+}
+qint32 TriadIpcQml::sendAction(const QString& action, const QVariantMap& payload) {
+	return TriadIpc::instance()->sendAction(action, payload);
+}
 void TriadIpcQml::dispatch(const QString& action, const QVariantMap& payload) {
 	TriadIpc::instance()->dispatch(action, payload);
 }
@@ -46,6 +60,12 @@ void TriadIpcQml::setLayout(const QString& layoutId, const QVariantMap& target) 
 
 QString TriadIpcQml::socketPath() { return TriadIpc::instance()->socketPath(); }
 QVariantMap TriadIpcQml::capabilities() { return TriadIpc::instance()->capabilities(); }
+QVariantMap TriadIpcQml::commandsCatalog() { return TriadIpc::instance()->commandsCatalog(); }
+QVariantList TriadIpcQml::layouts() { return TriadIpc::instance()->layouts(); }
+QStringList TriadIpcQml::layoutCycle() { return TriadIpc::instance()->layoutCycle(); }
+QVariantList TriadIpcQml::layoutCycleEntries() {
+	return TriadIpc::instance()->layoutCycleEntries();
+}
 QStringList TriadIpcQml::keyboardLayouts() { return TriadIpc::instance()->keyboardLayouts(); }
 ObjectModel<TriadWorkspace>* TriadIpcQml::workspaces() {
 	return TriadIpc::instance()->workspaces();
@@ -66,6 +86,15 @@ QBindable<TriadWindow*> TriadIpcQml::bindableFocusedWindow() {
 }
 QBindable<bool> TriadIpcQml::bindableOverviewOpen() {
 	return TriadIpc::instance()->bindableOverviewOpen();
+}
+QBindable<qint32> TriadIpcQml::bindableOverviewSelectedWindowId() {
+	return TriadIpc::instance()->bindableOverviewSelectedWindowId();
+}
+QBindable<qint32> TriadIpcQml::bindableActiveTag() {
+	return TriadIpc::instance()->bindableActiveTag();
+}
+QBindable<qint32> TriadIpcQml::bindableActiveWorkspaceIndex() {
+	return TriadIpc::instance()->bindableActiveWorkspaceIndex();
 }
 QBindable<qint32> TriadIpcQml::bindableCurrentKeyboardLayoutIndex() {
 	return TriadIpc::instance()->bindableCurrentKeyboardLayoutIndex();

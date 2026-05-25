@@ -30,6 +30,9 @@ void TriadWorkspace::updateFromObject(const QVariantMap& object) {
 	this->bLayout = stringOrEmpty(object, "layout");
 	this->bLayoutKind = stringOrEmpty(object, "layout_kind");
 	this->bRuntimeKind = stringOrEmpty(object, "runtime_kind");
+	this->bLayoutSource = stringOrEmpty(object, "layout_source");
+	this->bFallbackLayout = stringOrEmpty(object, "fallback_layout");
+	this->bConfigured = object.value("is_configured").toBool();
 	this->bActive = object.value("is_active").toBool();
 	this->bOutputVisible = object.value("is_output_visible").toBool();
 	this->bOccupied = object.value("occupied").toBool();
@@ -37,6 +40,16 @@ void TriadWorkspace::updateFromObject(const QVariantMap& object) {
 	this->bFocusedWindowId = intOrInvalid(object, "focused_window_id");
 	this->bMasterCount = intOrInvalid(object, "master_count");
 	this->bMasterSplitRatio = object.value("master_split_ratio").toReal();
+	this->mColumns = object.value("columns").toList();
+	emit this->columnsChanged();
+	this->mFrames = object.value("frames").toList();
+	emit this->framesChanged();
+	this->mBspNodes = object.value("bsp_nodes").toList();
+	emit this->bspNodesChanged();
+	this->mSplitNodes = object.value("split_nodes").toList();
+	emit this->splitNodesChanged();
+	this->mViewport = object.value("viewport").toMap();
+	emit this->viewportChanged();
 	emit this->lastIpcObjectChanged();
 }
 
@@ -48,6 +61,11 @@ void TriadWorkspace::setLayout(const QString& layoutId) {
 	this->ipc->setLayout(layoutId, {{"tag", this->bTagId.value()}});
 }
 
+QVariantList TriadWorkspace::columns() const { return this->mColumns; }
+QVariantList TriadWorkspace::frames() const { return this->mFrames; }
+QVariantList TriadWorkspace::bspNodes() const { return this->mBspNodes; }
+QVariantList TriadWorkspace::splitNodes() const { return this->mSplitNodes; }
+QVariantMap TriadWorkspace::viewport() const { return this->mViewport; }
 QVariantMap TriadWorkspace::lastIpcObject() const { return this->mLastIpcObject; }
 
 } // namespace qs::triad

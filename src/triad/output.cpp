@@ -33,6 +33,8 @@ void TriadOutput::updateFromObject(const QVariantMap& object) {
 	this->bHeight = geometry.value("height").toInt();
 	this->bScale = object.value("scale", 1).toReal();
 	this->bRefreshRate = intOrInvalid(object, "refresh_rate");
+	this->bPhysicalWidth = intOrInvalid(object, "physical_width");
+	this->bPhysicalHeight = intOrInvalid(object, "physical_height");
 	this->bTransform = stringOrEmpty(object, "transform");
 	emit this->lastIpcObjectChanged();
 }

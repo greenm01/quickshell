@@ -59,6 +59,8 @@ public:
 	void refresh();
 	void refreshLayout();
 	void refreshWindows();
+	qint32 sendRequest(const QString& request, const QVariantMap& payload = {});
+	qint32 sendAction(const QString& action, const QVariantMap& payload = {});
 	void dispatch(const QString& action, const QVariantMap& payload = {});
 	void focusWorkspace(qint32 workspaceIndex);
 	void focusTag(qint32 tagId);
@@ -78,11 +80,22 @@ public:
 	[[nodiscard]] QBindable<TriadOutput*> bindableFocusedOutput() { return &this->bFocusedOutput; }
 	[[nodiscard]] QBindable<TriadWindow*> bindableFocusedWindow() { return &this->bFocusedWindow; }
 	[[nodiscard]] QBindable<bool> bindableOverviewOpen() { return &this->bOverviewOpen; }
+	[[nodiscard]] QBindable<qint32> bindableOverviewSelectedWindowId() {
+		return &this->bOverviewSelectedWindowId;
+	}
+	[[nodiscard]] QBindable<qint32> bindableActiveTag() { return &this->bActiveTag; }
+	[[nodiscard]] QBindable<qint32> bindableActiveWorkspaceIndex() {
+		return &this->bActiveWorkspaceIndex;
+	}
 	[[nodiscard]] QBindable<qint32> bindableCurrentKeyboardLayoutIndex() {
 		return &this->bCurrentKeyboardLayoutIndex;
 	}
 
 	[[nodiscard]] QVariantMap capabilities() const { return this->mCapabilities; }
+	[[nodiscard]] QVariantMap commandsCatalog() const { return this->mCommandsCatalog; }
+	[[nodiscard]] QVariantList layouts() const { return this->mLayouts; }
+	[[nodiscard]] QStringList layoutCycle() const { return this->mLayoutCycle; }
+	[[nodiscard]] QVariantList layoutCycleEntries() const { return this->mLayoutCycleEntries; }
 	[[nodiscard]] QStringList keyboardLayouts() const { return this->mKeyboardLayouts; }
 
 	TriadWorkspace* workspaceByTag(qint32 tagId) const;
@@ -98,9 +111,17 @@ signals:
 	void focusedOutputChanged();
 	void focusedWindowChanged();
 	void overviewOpenChanged();
+	void overviewSelectedWindowIdChanged();
+	void activeTagChanged();
+	void activeWorkspaceIndexChanged();
+	void layoutsChanged();
+	void layoutCycleChanged();
+	void layoutCycleEntriesChanged();
 	void keyboardLayoutsChanged();
 	void currentKeyboardLayoutIndexChanged();
+	void commandsCatalogChanged();
 	void rawEvent(qs::triad::TriadIpcEvent* event);
+	void requestFinished(qint32 requestId, bool ok, QVariantMap triad, QString error);
 
 private slots:
 	void eventSocketConnected();
@@ -112,14 +133,15 @@ private slots:
 private:
 	explicit TriadIpc();
 
-	using RequestCallback = std::function<void(bool, QJsonObject)>;
+	using RequestCallback = std::function<void(bool, QJsonObject, QString)>;
 
 	void connectEventStream();
-	void makeRequest(const QJsonObject& payload, RequestCallback callback = {});
+	qint32 makeRequest(const QJsonObject& payload, RequestCallback callback = {});
 	void handleLine(const QByteArray& line);
 	void handleTriadObject(const QJsonObject& triad);
 	void handleState(const QJsonObject& state);
 	void handleLayoutState(const QJsonObject& state);
+	void handleOverview(const QJsonObject& overview);
 	void handleWindows(const QJsonArray& windows);
 	void handleWindow(const QJsonObject& object);
 	void handleOutputs(const QJsonArray& outputs);
@@ -133,6 +155,7 @@ private:
 	QTimer reconnectTimer;
 	QString mSocketPath;
 	bool connecting = false;
+	qint32 nextRequestId = 1;
 
 	ObjectModel<TriadWorkspace> mWorkspaces {this};
 	ObjectModel<TriadOutput> mOutputs {this};
@@ -144,6 +167,10 @@ private:
 	QHash<QString, TriadOutput*> outputsByName;
 
 	QVariantMap mCapabilities;
+	QVariantMap mCommandsCatalog;
+	QVariantList mLayouts;
+	QStringList mLayoutCycle;
+	QVariantList mLayoutCycleEntries;
 	QStringList mKeyboardLayouts;
 	TriadIpcEvent event {this};
 
@@ -167,6 +194,27 @@ private:
 	    &TriadIpc::focusedWindowChanged
 	);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadIpc, bool, bOverviewOpen, &TriadIpc::overviewOpenChanged);
+	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(
+	    TriadIpc,
+	    qint32,
+	    bOverviewSelectedWindowId,
+	    -1,
+	    &TriadIpc::overviewSelectedWindowIdChanged
+	);
+	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(
+	    TriadIpc,
+	    qint32,
+	    bActiveTag,
+	    -1,
+	    &TriadIpc::activeTagChanged
+	);
+	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(
+	    TriadIpc,
+	    qint32,
+	    bActiveWorkspaceIndex,
+	    -1,
+	    &TriadIpc::activeWorkspaceIndexChanged
+	);
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(
 	    TriadIpc,
 	    qint32,

@@ -1,6 +1,5 @@
 #include <qbytearray.h>
 #include <qcontainerfwd.h>
-#include <qcoreapplication.h>
 #include <qfile.h>
 #include <qjsondocument.h>
 #include <qjsonobject.h>
@@ -11,6 +10,7 @@
 #include <qsignalspy.h>
 #include <qtemporarydir.h>
 #include <qtest.h>
+#include <qvariant.h>
 
 #include "../connection.hpp"
 #include "../output.hpp"
@@ -20,15 +20,26 @@
 using namespace qs::triad;
 
 namespace {
-QByteArray eventStreamAck() {
+QByteArray ackReply() {
 	return R"({"ok":true,"triad":{"version":1,"type":"ack"}})"
+	       "\n";
+}
+
+QByteArray errorReply(const char* error) {
+	return QByteArray(R"({"ok":false,"error":")") + error + "\"}\n";
+}
+
+QByteArray commandsReply() {
+	return R"({"ok":true,"triad":{"version":1,"type":"commands","catalog":{"commands":[{"name":"focus-window"}],"special_requests":[{"name":"layout-state"}]}}})"
 	       "\n";
 }
 
 QByteArray layoutEvent(const char* layout = "scroller") {
 	return QByteArray(
 	           R"({"triad":{"version":1,"event":"layout-state-changed","state":{)"
-	           R"("version":1,"layouts":[],"layout_cycle":[],"layout_cycle_entries":[],)"
+	           R"("version":1,"layouts":[{"kind":"builtin","id":"scroller"}],)"
+	           R"("layout_cycle":["scroller","grid"],)"
+	           R"("layout_cycle_entries":[{"kind":"builtin","id":"scroller"}],)"
 	           R"("active_tag":1,"active_workspace_idx":1,"workspaces":[)"
 	           R"({"tag_id":1,"workspace_idx":1,"name":"main","output":"DP-1",)"
 	       )
@@ -36,30 +47,40 @@ QByteArray layoutEvent(const char* layout = "scroller") {
 	     + R"(","layout_kind":"columns","runtime_kind":"scroller","layout_source":"core",)"
 	       R"("fallback_layout":"","is_configured":true,"is_active":true,)"
 	       R"("is_output_visible":true,"is_urgent":false,"occupied":true,)"
-	       R"("focused_window_id":7,"columns":[],"frames":[],"bsp_nodes":[],)"
-	       R"("split_nodes":[],"master_count":1,"master_split_ratio":0.5},)"
+	       R"("focused_window_id":7,"columns":[{"idx":1,"windows":[7]}],)"
+	       R"("frames":[{"id":1,"kind":"leaf","focused":true}],)"
+	       R"("bsp_nodes":[{"id":1,"kind":"leaf","window_id":7}],)"
+	       R"("split_nodes":[{"id":2,"kind":"leaf"}],)"
+	       R"("master_count":1,"master_split_ratio":0.5,)"
+	       R"("viewport":{"target_x":1,"current_x":0.5,"target_y":2,"current_y":1.5}},)"
 	       R"({"tag_id":2,"workspace_idx":2,"name":null,"output":"DP-2",)"
 	       R"("layout":"grid","layout_kind":"grid","runtime_kind":"grid","layout_source":"core",)"
 	       R"("fallback_layout":"","is_configured":true,"is_active":false,)"
 	       R"("is_output_visible":true,"is_urgent":false,"occupied":false,)"
 	       R"("focused_window_id":null,"columns":[],"frames":[],"bsp_nodes":[],)"
-	       R"("split_nodes":[],"master_count":1,"master_split_ratio":0.5}]}}})"
+	       R"("split_nodes":[],"master_count":1,"master_split_ratio":0.5,)"
+	       R"("viewport":{"target_x":0,"current_x":0,"target_y":0,"current_y":0}}]}}})"
 	       "\n";
 }
 
 QByteArray stateEvent() {
 	return R"({"triad":{"version":1,"event":"state-changed","state":{"version":1,)"
 	       R"("capabilities":{"event_stream":true,"state":true},)"
-	       R"("overview":{"is_open":false,"selected_window_id":null},)"
+	       R"("overview":{"is_open":true,"selected_window_id":7},)"
 	       R"("keyboard_layouts":["us"],"current_keyboard_layout_idx":0,)"
-	       R"("layout":{"version":1,"layouts":[],"layout_cycle":[],"layout_cycle_entries":[],)"
+	       R"("layout":{"version":1,"layouts":[{"kind":"builtin","id":"scroller"}],)"
+	       R"("layout_cycle":["scroller","grid"],)"
+	       R"("layout_cycle_entries":[{"kind":"builtin","id":"scroller"}],)"
 	       R"("active_tag":1,"active_workspace_idx":1,"workspaces":[)"
 	       R"({"tag_id":1,"workspace_idx":1,"name":"main","output":"DP-1",)"
 	       R"("layout":"scroller","layout_kind":"columns","runtime_kind":"scroller",)"
 	       R"("layout_source":"core","fallback_layout":"","is_configured":true,)"
 	       R"("is_active":true,"is_output_visible":true,"is_urgent":false,)"
-	       R"("occupied":true,"focused_window_id":7,"columns":[],"frames":[],)"
-	       R"("bsp_nodes":[],"split_nodes":[],"master_count":1,"master_split_ratio":0.5}]},)"
+	       R"("occupied":true,"focused_window_id":7,"columns":[{"idx":1,"windows":[7]}],)"
+	       R"("frames":[{"id":1,"kind":"leaf","focused":true}],)"
+	       R"("bsp_nodes":[{"id":1,"kind":"leaf","window_id":7}],)"
+	       R"("split_nodes":[{"id":2,"kind":"leaf"}],"master_count":1,"master_split_ratio":0.5,)"
+	       R"("viewport":{"target_x":1,"current_x":0.5,"target_y":2,"current_y":1.5}}]},)"
 	       R"("outputs":[{"id":1,"name":"DP-1","connected":true,"is_primary":true,)"
 	       R"("refresh_rate":60000,"physical_width":600,"physical_height":340,)"
 	       R"("scale":1,"transform":"Normal","geometry":{"x":0,"y":0,"width":1920,"height":1080}}],)"
@@ -68,12 +89,32 @@ QByteArray stateEvent() {
 	       R"("position":{"column_idx":1,"window_idx":1},"is_focused":true,)"
 	       R"("is_floating":false,"is_maximized":false,"is_minimized":false,)"
 	       R"("is_sticky":false,"is_overlay":false,"is_unmanaged_global":false,)"
-	       R"("is_fullscreen":false,"fullscreen_output":null,"width_proportion":1,)"
-	       R"("height_proportion":1,"actual_size":{"width":100,"height":100},)"
-	       R"("floating_geometry":{"x":0,"y":0,"width":100,"height":100},)"
+	       R"("is_fullscreen":false,"fullscreen_output":1,"width_proportion":0.75,)"
+	       R"("height_proportion":0.5,"actual_size":{"width":100,"height":90},)"
+	       R"("floating_geometry":{"x":10,"y":20,"width":300,"height":200},)"
 	       R"("keyboard_shortcuts_inhibit":false,"idle_inhibit":"none",)"
-	       R"("is_terminal":true,"allow_swallow":true,"swallowed_by":null,"swallowing":null}]}}})"
+	       R"("is_terminal":true,"allow_swallow":true,"swallowed_by":8,"swallowing":9}]}}})"
 	       "\n";
+}
+
+QByteArray handleRequest(const QByteArray& request) {
+	auto root = QJsonDocument::fromJson(request.trimmed()).object();
+	auto triad = root.value("triad").toObject();
+	auto requestName = triad.value("request").toString();
+	if (requestName == "commands") return commandsReply();
+
+	if (requestName == "set-layout") {
+		auto target = triad.value("target").toObject();
+		if (target.contains("tag") || target.contains("workspace_idx")) return ackReply();
+		return errorReply("target must contain tag or workspace_idx");
+	}
+
+	if (requestName == "action" && triad.value("action").toString() == "focus-window") {
+		if (triad.value("id").isDouble()) return ackReply();
+		return errorReply("unknown action or bad parameters: focus-window");
+	}
+
+	return ackReply();
 }
 } // namespace
 
@@ -95,12 +136,14 @@ private slots:
 
 				QObject::connect(client, &QLocalSocket::readyRead, this, [this, client]() {
 					auto request = client->readAll();
-					if (!request.contains("event-stream")) return;
-
-					this->eventClient = client;
-					client->write(eventStreamAck());
-					client->write(layoutEvent());
-					client->write(stateEvent());
+					if (request.contains("event-stream")) {
+						this->eventClient = client;
+						client->write(ackReply());
+						client->write(layoutEvent());
+						client->write(stateEvent());
+					} else {
+						client->write(handleRequest(request));
+					}
 					client->flush();
 				});
 			}
@@ -115,12 +158,64 @@ private slots:
 		QTRY_COMPARE(ipc->windows()->valueList().size(), 1);
 
 		QCOMPARE(ipc->bindableFocusedWorkspace().value()->bindableTagId().value(), 1);
-		QCOMPARE(ipc->bindableFocusedOutput().value()->bindableName().value(), QString("DP-1"));
-		QCOMPARE(ipc->bindableFocusedWindow().value()->bindableTitle().value(), QString("Terminal"));
-		QCOMPARE(
-		    ipc->bindableFocusedWorkspace().value()->bindableFocusedWindow().value(),
-		    ipc->bindableFocusedWindow().value()
-		);
+		QCOMPARE(ipc->bindableActiveTag().value(), 1);
+		QCOMPARE(ipc->bindableActiveWorkspaceIndex().value(), 1);
+		QCOMPARE(ipc->bindableOverviewOpen().value(), true);
+		QCOMPARE(ipc->bindableOverviewSelectedWindowId().value(), 7);
+		QCOMPARE(ipc->layouts().size(), 1);
+		QCOMPARE(ipc->layoutCycle(), QStringList({"scroller", "grid"}));
+		QCOMPARE(ipc->layoutCycleEntries().size(), 1);
+
+		auto* output = ipc->bindableFocusedOutput().value();
+		QCOMPARE(output->bindableName().value(), QString("DP-1"));
+		QCOMPARE(output->bindablePhysicalWidth().value(), 600);
+		QCOMPARE(output->bindablePhysicalHeight().value(), 340);
+
+		auto* window = ipc->bindableFocusedWindow().value();
+		QCOMPARE(window->bindableTitle().value(), QString("Terminal"));
+		QCOMPARE(window->bindableParentId().value(), -1);
+		QCOMPARE(window->bindableColumnIndex().value(), 1);
+		QCOMPARE(window->bindableWindowIndex().value(), 1);
+		QCOMPARE(window->bindableFullscreenOutput().value(), 1);
+		QCOMPARE(window->bindableWidthProportion().value(), 0.75);
+		QCOMPARE(window->bindableHeightProportion().value(), 0.5);
+		QCOMPARE(window->bindableActualWidth().value(), 100);
+		QCOMPARE(window->bindableActualHeight().value(), 90);
+		QCOMPARE(window->bindableFloatingX().value(), 10);
+		QCOMPARE(window->bindableFloatingY().value(), 20);
+		QCOMPARE(window->bindableFloatingWidth().value(), 300);
+		QCOMPARE(window->bindableFloatingHeight().value(), 200);
+		QCOMPARE(window->bindableKeyboardShortcutsInhibit().value(), false);
+		QCOMPARE(window->bindableIdleInhibit().value(), QString("none"));
+		QCOMPARE(window->bindableAllowSwallow().value(), true);
+		QCOMPARE(window->bindableSwallowedBy().value(), 8);
+		QCOMPARE(window->bindableSwallowing().value(), 9);
+
+		auto* workspace = ipc->bindableFocusedWorkspace().value();
+		QCOMPARE(workspace->bindableLayoutSource().value(), QString("core"));
+		QCOMPARE(workspace->bindableConfigured().value(), true);
+		QCOMPARE(workspace->columns().size(), 1);
+		QCOMPARE(workspace->frames().size(), 1);
+		QCOMPARE(workspace->bspNodes().size(), 1);
+		QCOMPARE(workspace->splitNodes().size(), 1);
+		QCOMPARE(workspace->viewport().value("target_x").toReal(), 1.0);
+		QCOMPARE(workspace->bindableFocusedWindow().value(), window);
+	}
+
+	void emitsRequestResults() {
+		auto* ipc = TriadIpc::instance();
+		QSignalSpy spy(ipc, &TriadIpc::requestFinished);
+		auto requestId = ipc->sendRequest("commands");
+		QTRY_COMPARE(spy.size(), 1);
+		QCOMPARE(spy.at(0).at(0).toInt(), requestId);
+		QCOMPARE(spy.at(0).at(1).toBool(), true);
+		QCOMPARE(ipc->commandsCatalog().value("commands").toList().size(), 1);
+
+		auto badId = ipc->sendAction("focus-window", {{"id", QString("bad")}});
+		QTRY_COMPARE(spy.size(), 2);
+		QCOMPARE(spy.at(1).at(0).toInt(), badId);
+		QCOMPARE(spy.at(1).at(1).toBool(), false);
+		QVERIFY(spy.at(1).at(3).toString().contains("focus-window"));
 	}
 
 	void preservesWorkspaceIdentity() {
