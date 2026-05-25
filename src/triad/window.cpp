@@ -1,5 +1,6 @@
 #include "window.hpp"
 
+#include <limits>
 #include <qvariant.h>
 
 #include "connection.hpp"
@@ -12,6 +13,16 @@ qint32 intOrInvalid(const QVariantMap& object, const QString& key) {
 	return value.isValid() && !value.isNull() ? value.toInt() : -1;
 }
 
+quint32 uintOrNone(const QVariantMap& object, const QString& key) {
+	auto value = object.value(key);
+	if (!value.isValid() || value.isNull()) return 0;
+
+	auto ok = false;
+	auto parsed = value.toULongLong(&ok);
+	if (!ok || parsed > std::numeric_limits<quint32>::max()) return 0;
+	return static_cast<quint32>(parsed);
+}
+
 QString stringOrEmpty(const QVariantMap& object, const QString& key) {
 	auto value = object.value(key);
 	return value.isValid() && !value.isNull() ? value.toString() : QString();
@@ -22,12 +33,12 @@ TriadWindow::TriadWindow(TriadIpc* ipc): QObject(ipc), ipc(ipc) {}
 
 void TriadWindow::updateFromObject(const QVariantMap& object) {
 	this->mLastIpcObject = object;
-	this->bId = intOrInvalid(object, "id");
+	this->bId = uintOrNone(object, "id");
 	this->bPid = intOrInvalid(object, "pid");
-	this->bParentId = intOrInvalid(object, "parent_id");
+	this->bParentId = uintOrNone(object, "parent_id");
 	this->bTitle = stringOrEmpty(object, "title");
 	this->bAppId = stringOrEmpty(object, "app_id");
-	this->bTagId = intOrInvalid(object, "tag_id");
+	this->bTagId = uintOrNone(object, "tag_id");
 	this->bWorkspaceIndex = intOrInvalid(object, "workspace_idx");
 	this->bOutputName = stringOrEmpty(object, "output");
 	auto position = object.value("position").toMap();
@@ -41,7 +52,7 @@ void TriadWindow::updateFromObject(const QVariantMap& object) {
 	this->bSticky = object.value("is_sticky").toBool();
 	this->bOverlay = object.value("is_overlay").toBool();
 	this->bUnmanagedGlobal = object.value("is_unmanaged_global").toBool();
-	this->bFullscreenOutput = intOrInvalid(object, "fullscreen_output");
+	this->bFullscreenOutput = uintOrNone(object, "fullscreen_output");
 	this->bWidthProportion = object.value("width_proportion").toReal();
 	this->bHeightProportion = object.value("height_proportion").toReal();
 	auto actualSize = object.value("actual_size").toMap();
@@ -56,8 +67,8 @@ void TriadWindow::updateFromObject(const QVariantMap& object) {
 	this->bIdleInhibit = stringOrEmpty(object, "idle_inhibit");
 	this->bTerminal = object.value("is_terminal").toBool();
 	this->bAllowSwallow = object.value("allow_swallow").toBool();
-	this->bSwallowedBy = intOrInvalid(object, "swallowed_by");
-	this->bSwallowing = intOrInvalid(object, "swallowing");
+	this->bSwallowedBy = uintOrNone(object, "swallowed_by");
+	this->bSwallowing = uintOrNone(object, "swallowing");
 	emit this->lastIpcObjectChanged();
 }
 

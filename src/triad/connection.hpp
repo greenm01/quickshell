@@ -72,11 +72,36 @@ public:
 	qint32 dispatch(const QString& action, const QVariantMap& payload = {});
 	qint32 dispatchBinding(const QString& kind, const QString& binding, qint32 amount = 1);
 	qint32 focusWorkspace(qint32 workspaceIndex);
-	qint32 focusTag(qint32 tagId);
-	qint32 focusWindow(qint32 windowId);
-	qint32 closeWindow(qint32 windowId = 0);
+	qint32 focusTag(quint32 tagId);
+	qint32 focusWindow(quint32 windowId);
+	qint32 closeWindow(quint32 windowId = 0);
 	qint32 switchLayout();
 	qint32 setLayout(const QString& layoutId, const QVariantMap& target = {});
+	qint32 spawn(const QStringList& argv);
+	qint32 switchKeyboardLayout(const QVariant& layout = {});
+	qint32 powerOffMonitors();
+	qint32 powerOnMonitors();
+	qint32 powerOffMonitor(const QString& output);
+	qint32 powerOnMonitor(const QString& output);
+	qint32 toggleOverview();
+	qint32 openOverview();
+	qint32 closeOverview();
+	qint32 toggleScratchpad();
+	qint32 toggleNamedScratchpad(const QString& name);
+	qint32 moveToScratchpad();
+	qint32 moveToNamedScratchpad(const QString& name);
+	qint32 toggleFloating();
+	qint32 fullscreenWindow(quint32 windowId = 0);
+	qint32 toggleMaximized();
+	qint32 minimize();
+	qint32 moveToTag(quint32 tagId);
+	qint32 moveToWorkspace(qint32 workspaceIndex);
+	qint32 moveWindowToTag(quint32 windowId, quint32 tagId, bool follow = true);
+	qint32 moveWindowToWorkspace(quint32 windowId, qint32 workspaceIndex, bool follow = true);
+	qint32 focusOutput(const QString& output);
+	qint32 moveWorkspaceToOutput(const QString& output);
+	qint32 moveToOutput(const QString& output);
+	qint32 newWorkspace();
 	[[nodiscard]] QVariantMap commandSpec(const QString& name) const;
 	[[nodiscard]] bool hasCommand(const QString& name) const;
 	[[nodiscard]] bool validateAction(const QString& action, const QVariantMap& payload) const;
@@ -93,10 +118,10 @@ public:
 	[[nodiscard]] QBindable<TriadOutput*> bindableFocusedOutput() { return &this->bFocusedOutput; }
 	[[nodiscard]] QBindable<TriadWindow*> bindableFocusedWindow() { return &this->bFocusedWindow; }
 	[[nodiscard]] QBindable<bool> bindableOverviewOpen() { return &this->bOverviewOpen; }
-	[[nodiscard]] QBindable<qint32> bindableOverviewSelectedWindowId() {
+	[[nodiscard]] QBindable<quint32> bindableOverviewSelectedWindowId() {
 		return &this->bOverviewSelectedWindowId;
 	}
-	[[nodiscard]] QBindable<qint32> bindableActiveTag() { return &this->bActiveTag; }
+	[[nodiscard]] QBindable<quint32> bindableActiveTag() { return &this->bActiveTag; }
 	[[nodiscard]] QBindable<qint32> bindableActiveWorkspaceIndex() {
 		return &this->bActiveWorkspaceIndex;
 	}
@@ -111,10 +136,10 @@ public:
 	[[nodiscard]] QVariantList layoutCycleEntries() const { return this->mLayoutCycleEntries; }
 	[[nodiscard]] QStringList keyboardLayouts() const { return this->mKeyboardLayouts; }
 
-	TriadWorkspace* workspaceByTag(qint32 tagId) const;
+	TriadWorkspace* workspaceByTag(quint32 tagId) const;
 	TriadWorkspace* workspaceByIndex(qint32 workspaceIndex) const;
 	TriadOutput* outputByName(const QString& name) const;
-	TriadWindow* windowById(qint32 id) const;
+	TriadWindow* windowById(quint32 id) const;
 
 signals:
 	void connectedChanged();
@@ -163,7 +188,11 @@ private:
 	void updateDerivedState();
 	void autoRefreshCommands();
 	void setSocketPath(const QString& path);
-	[[nodiscard]] bool payloadMatchesShape(const QString& shape, const QVariantMap& payload) const;
+	[[nodiscard]] bool payloadMatchesShape(
+	    const QString& commandName,
+	    const QString& shape,
+	    const QVariantMap& payload
+	) const;
 	[[nodiscard]] bool hasCommandPayloadField(
 	    const QVariantMap& payload,
 	    const QString& key,
@@ -182,9 +211,9 @@ private:
 	ObjectModel<TriadOutput> mOutputs {this};
 	ObjectModel<TriadWindow> mWindows {this};
 
-	QHash<qint32, TriadWorkspace*> workspacesByTag;
-	QHash<qint32, TriadWindow*> windowsById;
-	QHash<qint32, TriadOutput*> outputsById;
+	QHash<quint32, TriadWorkspace*> workspacesByTag;
+	QHash<quint32, TriadWindow*> windowsById;
+	QHash<quint32, TriadOutput*> outputsById;
 	QHash<QString, TriadOutput*> outputsByName;
 
 	QVariantMap mCapabilities;
@@ -219,16 +248,16 @@ private:
 	Q_OBJECT_BINDABLE_PROPERTY(TriadIpc, bool, bOverviewOpen, &TriadIpc::overviewOpenChanged);
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(
 	    TriadIpc,
-	    qint32,
+	    quint32,
 	    bOverviewSelectedWindowId,
-	    -1,
+	    0,
 	    &TriadIpc::overviewSelectedWindowIdChanged
 	);
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(
 	    TriadIpc,
-	    qint32,
+	    quint32,
 	    bActiveTag,
-	    -1,
+	    0,
 	    &TriadIpc::activeTagChanged
 	);
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(

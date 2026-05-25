@@ -17,7 +17,7 @@ class TriadOutput: public QObject {
 	Q_OBJECT;
 	// clang-format off
 	/// Stable Triad output ID.
-	Q_PROPERTY(qint32 id READ default NOTIFY idChanged BINDABLE bindableId);
+	Q_PROPERTY(quint32 id READ default NOTIFY idChanged BINDABLE bindableId);
 	/// Output name.
 	Q_PROPERTY(QString name READ default NOTIFY nameChanged BINDABLE bindableName);
 	/// True when this is the primary output.
@@ -59,7 +59,7 @@ public:
 	void setFocused(bool focused);
 	void setActiveWorkspace(TriadWorkspace* workspace);
 
-	[[nodiscard]] QBindable<qint32> bindableId() { return &this->bId; }
+	[[nodiscard]] QBindable<quint32> bindableId() { return &this->bId; }
 	[[nodiscard]] QBindable<QString> bindableName() { return &this->bName; }
 	[[nodiscard]] QBindable<bool> bindablePrimary() { return &this->bPrimary; }
 	[[nodiscard]] QBindable<bool> bindableConnected() { return &this->bConnected; }
@@ -101,7 +101,7 @@ private:
 	QVariantMap mLastIpcObject;
 
 	// clang-format off
-	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TriadOutput, qint32, bId, -1, &TriadOutput::idChanged);
+	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TriadOutput, quint32, bId, 0, &TriadOutput::idChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, QString, bName, &TriadOutput::nameChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(TriadOutput, bool, bPrimary, &TriadOutput::primaryChanged);
 	Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TriadOutput, bool, bConnected, true, &TriadOutput::connectedChanged);

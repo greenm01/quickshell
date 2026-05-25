@@ -1,5 +1,6 @@
 #include "connection.hpp"
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -17,6 +18,7 @@
 #include <qobject.h>
 #include <qtenvironmentvariables.h>
 #include <qtimer.h>
+#include <limits>
 #include <qtypes.h>
 #include <qvariant.h>
 
@@ -51,6 +53,17 @@ qint32 intOrInvalid(const QVariantMap& object, const QString& key) {
 	return value.isValid() && !value.isNull() ? value.toInt() : -1;
 }
 
+quint32 uintOrNone(const QVariantMap& object, const QString& key) {
+	auto value = object.value(key);
+	if (!value.isValid() || value.isNull()) return 0;
+	if (!value.canConvert<qulonglong>()) return 0;
+
+	auto ok = false;
+	auto parsed = value.toULongLong(&ok);
+	if (!ok || parsed > std::numeric_limits<quint32>::max()) return 0;
+	return static_cast<quint32>(parsed);
+}
+
 QStringList stringListFromVariant(const QVariant& value) {
 	auto result = QStringList();
 	for (const auto& item: value.toList()) {
@@ -80,13 +93,53 @@ bool isIntegral(const QVariant& value) {
 
 bool isNumeric(const QVariant& value) { return isIntegral(value) || value.metaType().id() == QMetaType::Double; }
 
+bool isPositiveUint(const QVariant& value) {
+	if (value.metaType().id() == QMetaType::Double) {
+		auto parsed = value.toDouble();
+		return std::isfinite(parsed) && std::trunc(parsed) == parsed && parsed > 0
+		    && parsed <= std::numeric_limits<quint32>::max();
+	}
+	if (!isIntegral(value)) return false;
+	auto type = value.metaType().id();
+	if (type == QMetaType::Int || type == QMetaType::LongLong) {
+		auto ok = false;
+		auto parsed = value.toLongLong(&ok);
+		return ok && parsed > 0 && parsed <= std::numeric_limits<quint32>::max();
+	}
+
+	auto ok = false;
+	auto parsed = value.toULongLong(&ok);
+	return ok && parsed > 0 && parsed <= std::numeric_limits<quint32>::max();
+}
+
+bool isInteger(const QVariant& value) {
+	if (value.metaType().id() == QMetaType::Double) {
+		auto parsed = value.toDouble();
+		return std::isfinite(parsed) && std::trunc(parsed) == parsed;
+	}
+	return isIntegral(value);
+}
+
 bool isString(const QVariant& value) { return value.metaType().id() == QMetaType::QString; }
+
+bool isNonEmptyString(const QVariant& value) {
+	return isString(value) && !value.toString().isEmpty();
+}
 
 bool isBool(const QVariant& value) { return value.metaType().id() == QMetaType::Bool; }
 
 bool isList(const QVariant& value) {
 	auto type = value.metaType().id();
 	return type == QMetaType::QVariantList || type == QMetaType::QStringList;
+}
+
+bool isNonEmptyStringList(const QVariant& value) {
+	if (value.metaType().id() == QMetaType::QStringList) return !value.toStringList().isEmpty();
+	if (value.metaType().id() != QMetaType::QVariantList) return false;
+
+	auto list = value.toList();
+	if (list.isEmpty()) return false;
+	return std::all_of(list.begin(), list.end(), [](const QVariant& item) { return isString(item); });
 }
 } // namespace
 
@@ -334,13 +387,13 @@ qint32 TriadIpc::focusWorkspace(qint32 workspaceIndex) {
 	return this->dispatch("focus-workspace", {{"workspace_idx", workspaceIndex}});
 }
 
-qint32 TriadIpc::focusTag(qint32 tagId) { return this->dispatch("focus-tag", {{"tag", tagId}}); }
+qint32 TriadIpc::focusTag(quint32 tagId) { return this->dispatch("focus-tag", {{"tag", tagId}}); }
 
-qint32 TriadIpc::focusWindow(qint32 windowId) {
+qint32 TriadIpc::focusWindow(quint32 windowId) {
 	return this->dispatch("focus-window", {{"id", windowId}});
 }
 
-qint32 TriadIpc::closeWindow(qint32 windowId) {
+qint32 TriadIpc::closeWindow(quint32 windowId) {
 	if (windowId > 0) return this->dispatch("close-window", {{"id", windowId}});
 	return this->dispatch("close-window");
 }
@@ -355,6 +408,94 @@ qint32 TriadIpc::setLayout(const QString& layoutId, const QVariantMap& target) {
 	if (!target.isEmpty()) payload.insert("target", QJsonObject::fromVariantMap(target));
 	return this->makeTrackedRequest(payload);
 }
+
+qint32 TriadIpc::spawn(const QStringList& argv) {
+	return this->sendValidatedAction("spawn", {{"argv", argv}});
+}
+
+qint32 TriadIpc::switchKeyboardLayout(const QVariant& layout) {
+	auto payload = QVariantMap();
+	if (layout.isValid() && !layout.isNull()) payload.insert("layout", layout);
+	return this->sendValidatedAction("switch-keyboard-layout", payload);
+}
+
+qint32 TriadIpc::powerOffMonitors() { return this->sendValidatedAction("power-off-monitors"); }
+
+qint32 TriadIpc::powerOnMonitors() { return this->sendValidatedAction("power-on-monitors"); }
+
+qint32 TriadIpc::powerOffMonitor(const QString& output) {
+	return this->sendValidatedAction("power-off-monitor", {{"output", output}});
+}
+
+qint32 TriadIpc::powerOnMonitor(const QString& output) {
+	return this->sendValidatedAction("power-on-monitor", {{"output", output}});
+}
+
+qint32 TriadIpc::toggleOverview() { return this->sendValidatedAction("toggle-overview"); }
+
+qint32 TriadIpc::openOverview() { return this->sendValidatedAction("open-overview"); }
+
+qint32 TriadIpc::closeOverview() { return this->sendValidatedAction("close-overview"); }
+
+qint32 TriadIpc::toggleScratchpad() { return this->sendValidatedAction("toggle-scratchpad"); }
+
+qint32 TriadIpc::toggleNamedScratchpad(const QString& name) {
+	return this->sendValidatedAction("toggle-named-scratchpad", {{"name", name}});
+}
+
+qint32 TriadIpc::moveToScratchpad() { return this->sendValidatedAction("move-to-scratchpad"); }
+
+qint32 TriadIpc::moveToNamedScratchpad(const QString& name) {
+	return this->sendValidatedAction("move-to-named-scratchpad", {{"name", name}});
+}
+
+qint32 TriadIpc::toggleFloating() { return this->sendValidatedAction("toggle-floating"); }
+
+qint32 TriadIpc::fullscreenWindow(quint32 windowId) {
+	auto payload = QVariantMap();
+	if (windowId != 0) payload.insert("id", windowId);
+	return this->sendValidatedAction("fullscreen-window", payload);
+}
+
+qint32 TriadIpc::toggleMaximized() { return this->sendValidatedAction("toggle-maximized"); }
+
+qint32 TriadIpc::minimize() { return this->sendValidatedAction("minimize"); }
+
+qint32 TriadIpc::moveToTag(quint32 tagId) {
+	return this->sendValidatedAction("move-to-tag", {{"tag", tagId}});
+}
+
+qint32 TriadIpc::moveToWorkspace(qint32 workspaceIndex) {
+	return this->sendValidatedAction("move-to-workspace", {{"workspace_idx", workspaceIndex}});
+}
+
+qint32 TriadIpc::moveWindowToTag(quint32 windowId, quint32 tagId, bool follow) {
+	return this->sendValidatedAction(
+	    "move-window-to-tag",
+	    {{"id", windowId}, {"tag", tagId}, {"follow", follow}}
+	);
+}
+
+qint32 TriadIpc::moveWindowToWorkspace(quint32 windowId, qint32 workspaceIndex, bool follow) {
+	return this->sendValidatedAction(
+	    "move-window-to-workspace",
+	    {{"id", windowId}, {"workspace_idx", workspaceIndex}, {"follow", follow}}
+	);
+}
+
+qint32 TriadIpc::focusOutput(const QString& output) {
+	return this->sendValidatedAction("focus-output", {{"output", output}});
+}
+
+qint32 TriadIpc::moveWorkspaceToOutput(const QString& output) {
+	return this->sendValidatedAction("move-workspace-to-output", {{"output", output}});
+}
+
+qint32 TriadIpc::moveToOutput(const QString& output) {
+	return this->sendValidatedAction("move-to-output", {{"output", output}});
+}
+
+qint32 TriadIpc::newWorkspace() { return this->sendValidatedAction("new-workspace"); }
 
 QVariantMap TriadIpc::commandSpec(const QString& name) const {
 	for (const auto& value: this->mCommandsCatalog.value("commands").toList()) {
@@ -380,7 +521,7 @@ bool TriadIpc::hasCommandPayloadField(
 ) const {
 	auto value = payload.value(key);
 	if (!value.isValid() || value.isNull()) return false;
-	if (type == QMetaType::Int) return isNumeric(value);
+	if (type == QMetaType::Int) return isInteger(value);
 	if (type == QMetaType::Double) return isNumeric(value);
 	if (type == QMetaType::QString) return isString(value);
 	if (type == QMetaType::Bool) return isBool(value);
@@ -388,95 +529,113 @@ bool TriadIpc::hasCommandPayloadField(
 	return value.metaType().id() == type;
 }
 
-bool TriadIpc::payloadMatchesShape(const QString& shape, const QVariantMap& payload) const {
-	auto optionalInt = [this, &payload](const QString& key) {
-		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::Int);
+bool TriadIpc::payloadMatchesShape(
+    const QString& commandName,
+    const QString& shape,
+    const QVariantMap& payload
+) const {
+	auto hasUint = [&payload](const QString& key) { return isPositiveUint(payload.value(key)); };
+	auto hasInt = [&payload](const QString& key) { return isInteger(payload.value(key)); };
+	auto hasNumber = [&payload](const QString& key) { return isNumeric(payload.value(key)); };
+	auto hasNonEmptyString = [&payload](const QString& key) {
+		return isNonEmptyString(payload.value(key));
 	};
-	auto optionalDouble = [this, &payload](const QString& key) {
-		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::Double);
+	auto optionalUint = [&payload, hasUint](const QString& key) {
+		return !payload.contains(key) || hasUint(key);
 	};
-	auto optionalString = [this, &payload](const QString& key) {
-		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::QString);
+	auto optionalInt = [&payload, hasInt](const QString& key) {
+		return !payload.contains(key) || hasInt(key);
 	};
-	auto optionalBool = [this, &payload](const QString& key) {
-		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::Bool);
+	auto optionalDouble = [&payload, hasNumber](const QString& key) {
+		return !payload.contains(key) || hasNumber(key);
+	};
+	auto optionalString = [&payload](const QString& key) {
+		return !payload.contains(key) || isString(payload.value(key));
+	};
+	auto optionalBool = [&payload](const QString& key) {
+		return !payload.contains(key) || isBool(payload.value(key));
 	};
 
 	if (shape == "none") return true;
-	if (shape == "optional-window-id") return optionalInt("id");
+	if (shape == "optional-window-id") return optionalUint("id");
 	if (shape == "required-window-id") {
-		return this->hasCommandPayloadField(payload, "id", QMetaType::Int);
+		return hasUint("id");
 	}
 	if (shape == "window-tag-follow") {
-		return this->hasCommandPayloadField(payload, "id", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "tag", QMetaType::Int) && optionalBool("follow");
+		return hasUint("id") && hasUint("tag") && optionalBool("follow");
 	}
 	if (shape == "window-workspace-follow") {
-		return this->hasCommandPayloadField(payload, "id", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "workspace_idx", QMetaType::Int)
-		    && optionalBool("follow");
+		return hasUint("id") && hasUint("workspace_idx") && optionalBool("follow");
 	}
 	if (shape == "window-bool") {
-		return this->hasCommandPayloadField(payload, "id", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "value", QMetaType::Bool);
+		return hasUint("id") && isBool(payload.value("value"));
 	}
 	if (shape == "tag-layout") {
-		return this->hasCommandPayloadField(payload, "tag", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "layout", QMetaType::QString);
+		return hasUint("tag") && hasNonEmptyString("layout");
 	}
 	if (shape == "required-tag") {
-		return this->hasCommandPayloadField(payload, "tag", QMetaType::Int);
+		return hasUint("tag");
 	}
 	if (shape == "required-workspace-idx") {
-		return this->hasCommandPayloadField(payload, "workspace_idx", QMetaType::Int);
+		return hasUint("workspace_idx");
 	}
 	if (shape == "required-name") {
-		return this->hasCommandPayloadField(payload, "name", QMetaType::QString);
+		return hasNonEmptyString("name");
 	}
 	if (shape == "required-output") {
-		return this->hasCommandPayloadField(payload, "output", QMetaType::QString);
+		return hasNonEmptyString("output");
 	}
-	if (shape == "required-float-delta" || shape == "required-int-delta"
-	    || shape == "optional-float-delta" || shape == "optional-int-delta") {
-		auto required = !shape.startsWith("optional");
-		return required ? this->hasCommandPayloadField(payload, "delta", QMetaType::Double)
-		                : optionalDouble("delta");
+	if (shape == "required-float-delta") {
+		return hasNumber("delta");
+	}
+	if (shape == "required-int-delta") {
+		return hasInt("delta");
+	}
+	if (shape == "optional-float-delta") {
+		return optionalDouble("delta");
+	}
+	if (shape == "optional-int-delta") {
+		return optionalInt("delta");
 	}
 	if (shape == "required-float-value") {
-		return this->hasCommandPayloadField(payload, "value", QMetaType::Double);
+		return hasNumber("value") || (commandName == "set-column-width" && hasNumber("width"));
 	}
 	if (shape == "required-int-count") {
-		return this->hasCommandPayloadField(payload, "count", QMetaType::Int);
+		return hasInt("count");
 	}
 	if (shape == "move-delta") {
-		return this->hasCommandPayloadField(payload, "dx", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "dy", QMetaType::Int);
+		return hasInt("dx") && hasInt("dy");
 	}
 	if (shape == "resize-delta") {
-		return this->hasCommandPayloadField(payload, "dw", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "dh", QMetaType::Int);
+		return hasInt("dw") && hasInt("dh");
 	}
 	if (shape == "recent-advance") {
 		return optionalString("scope") && optionalString("filter");
 	}
 	if (shape == "recent-scope") {
-		return this->hasCommandPayloadField(payload, "scope", QMetaType::QString);
+		return hasNonEmptyString("scope");
 	}
 	if (shape == "spawn-argv" || shape == "split-tree-mode-list") {
-		return this->hasCommandPayloadField(payload, "argv", QMetaType::QVariantList);
+		return isNonEmptyStringList(payload.value("argv"));
 	}
 	if (shape == "warp-pointer") {
-		return this->hasCommandPayloadField(payload, "x", QMetaType::Int)
-		    && this->hasCommandPayloadField(payload, "y", QMetaType::Int);
+		return hasInt("x") && hasInt("y");
 	}
 	if (shape == "screenshot") {
-		return optionalString("path") && optionalBool("show_pointer") && optionalBool("write_to_disk")
-		    && optionalBool("copy_to_clipboard");
+		if (!optionalString("path") || !optionalBool("show_pointer") || !optionalBool("write_to_disk")
+		    || !optionalBool("copy_to_clipboard")) {
+			return false;
+		}
+
+		auto writeToDisk = !payload.contains("write_to_disk") || payload.value("write_to_disk").toBool();
+		auto copyToClipboard =
+		    !payload.contains("copy_to_clipboard") || payload.value("copy_to_clipboard").toBool();
+		return writeToDisk || copyToClipboard;
 	}
 	if (shape == "keyboard-layout-target") {
 		if (!payload.contains("layout")) return true;
 		auto layout = payload.value("layout");
-		return isString(layout) || isNumeric(layout);
+		return isString(layout) || isInteger(layout);
 	}
 
 	return false;
@@ -485,7 +644,11 @@ bool TriadIpc::payloadMatchesShape(const QString& shape, const QVariantMap& payl
 bool TriadIpc::validateAction(const QString& action, const QVariantMap& payload) const {
 	auto command = this->commandSpec(action);
 	if (command.isEmpty()) return false;
-	return this->payloadMatchesShape(command.value("arg_shape").toString(), payload);
+	return this->payloadMatchesShape(
+	    command.value("name").toString(),
+	    command.value("arg_shape").toString(),
+	    payload
+	);
 }
 
 qint32 TriadIpc::sendValidatedAction(const QString& action, const QVariantMap& payload) {
@@ -494,13 +657,11 @@ qint32 TriadIpc::sendValidatedAction(const QString& action, const QVariantMap& p
 }
 
 void TriadIpc::autoRefreshCommands() {
-	if (this->commandsAutoRefreshRequested || !this->mCommandsCatalog.isEmpty()) return;
+	if (this->commandsAutoRefreshRequested) return;
 	this->commandsAutoRefreshRequested = true;
 	this->makeRequest(
 	    triadPayload("commands"),
-	    [this](qint32, bool ok, const QJsonObject&, const QString&) {
-		    if (!ok) this->commandsAutoRefreshRequested = false;
-	    }
+	    [this](qint32, bool, const QJsonObject&, const QString&) { this->commandsAutoRefreshRequested = false; }
 	);
 }
 
@@ -592,7 +753,7 @@ void TriadIpc::handleLayoutState(const QJsonObject& state) {
 	emit this->layoutCycleChanged();
 	this->mLayoutCycleEntries = state.value("layout_cycle_entries").toVariant().toList();
 	emit this->layoutCycleEntriesChanged();
-	this->bActiveTag = intOrInvalid(state, "active_tag");
+	this->bActiveTag = uintOrNone(state.toVariantMap(), "active_tag");
 	this->bActiveWorkspaceIndex = intOrInvalid(state, "active_workspace_idx");
 	this->handleWorkspaces(state.value("workspaces").toArray());
 	this->updateDerivedState();
@@ -600,17 +761,17 @@ void TriadIpc::handleLayoutState(const QJsonObject& state) {
 
 void TriadIpc::handleOverview(const QJsonObject& overview) {
 	this->bOverviewOpen = overview.value("is_open").toBool();
-	this->bOverviewSelectedWindowId = intOrInvalid(overview, "selected_window_id");
+	this->bOverviewSelectedWindowId = uintOrNone(overview.toVariantMap(), "selected_window_id");
 }
 
 void TriadIpc::handleWorkspaces(const QJsonArray& workspaces) {
 	auto newValues = QList<TriadWorkspace*>();
-	auto seen = QHash<qint32, bool>();
+	auto seen = QHash<quint32, bool>();
 
 	for (const auto& value: workspaces) {
 		auto object = value.toObject().toVariantMap();
-		auto tagId = intOrInvalid(object, "tag_id");
-		if (tagId < 0) continue;
+		auto tagId = uintOrNone(object, "tag_id");
+		if (tagId == 0) continue;
 
 		auto* workspace = this->workspacesByTag.value(tagId);
 		if (workspace == nullptr) {
@@ -637,13 +798,13 @@ void TriadIpc::handleWorkspaces(const QJsonArray& workspaces) {
 
 void TriadIpc::handleOutputs(const QJsonArray& outputs) {
 	auto newValues = QList<TriadOutput*>();
-	auto seen = QHash<qint32, bool>();
+	auto seen = QHash<quint32, bool>();
 	this->outputsByName.clear();
 
 	for (const auto& value: outputs) {
 		auto object = value.toObject().toVariantMap();
-		auto id = intOrInvalid(object, "id");
-		if (id < 0) continue;
+		auto id = uintOrNone(object, "id");
+		if (id == 0) continue;
 
 		auto* output = this->outputsById.value(id);
 		if (output == nullptr) {
@@ -672,12 +833,12 @@ void TriadIpc::handleOutputs(const QJsonArray& outputs) {
 void TriadIpc::handleWindows(const QJsonArray& windows) {
 	this->focusedWindowExplicitlyNull = false;
 	auto newValues = QList<TriadWindow*>();
-	auto seen = QHash<qint32, bool>();
+	auto seen = QHash<quint32, bool>();
 
 	for (const auto& value: windows) {
 		auto object = value.toObject();
-		auto id = object.value("id").toInt(-1);
-		if (id < 0) continue;
+		auto id = uintOrNone(object.toVariantMap(), "id");
+		if (id == 0) continue;
 
 		auto* window = this->windowsById.value(id);
 		if (window == nullptr) {
@@ -704,8 +865,8 @@ void TriadIpc::handleWindows(const QJsonArray& windows) {
 
 void TriadIpc::handleWindow(const QJsonObject& object) {
 	if (object.isEmpty()) return;
-	auto id = object.value("id").toInt(-1);
-	if (id < 0) return;
+	auto id = uintOrNone(object.toVariantMap(), "id");
+	if (id == 0) return;
 
 	auto* window = this->windowsById.value(id);
 	if (window == nullptr) {
@@ -759,7 +920,7 @@ void TriadIpc::updateDerivedState() {
 	this->bFocusedOutput = focusedOutput;
 }
 
-TriadWorkspace* TriadIpc::workspaceByTag(qint32 tagId) const {
+TriadWorkspace* TriadIpc::workspaceByTag(quint32 tagId) const {
 	return this->workspacesByTag.value(tagId);
 }
 
@@ -774,6 +935,6 @@ TriadOutput* TriadIpc::outputByName(const QString& name) const {
 	return this->outputsByName.value(name);
 }
 
-TriadWindow* TriadIpc::windowById(qint32 id) const { return this->windowsById.value(id); }
+TriadWindow* TriadIpc::windowById(quint32 id) const { return this->windowsById.value(id); }
 
 } // namespace qs::triad

@@ -41,10 +41,10 @@ class TriadIpcQml: public QObject {
 	Q_PROPERTY(qs::triad::TriadWindow* focusedWindow READ default NOTIFY focusedWindowChanged BINDABLE bindableFocusedWindow);
 	/// True when Triad's overview is open.
 	Q_PROPERTY(bool overviewOpen READ default NOTIFY overviewOpenChanged BINDABLE bindableOverviewOpen);
-	/// Window selected by Triad's overview, or -1.
-	Q_PROPERTY(qint32 overviewSelectedWindowId READ default NOTIFY overviewSelectedWindowIdChanged BINDABLE bindableOverviewSelectedWindowId);
-	/// Stable tag ID of the active workspace, or -1.
-	Q_PROPERTY(qint32 activeTag READ default NOTIFY activeTagChanged BINDABLE bindableActiveTag);
+	/// Window selected by Triad's overview, or 0.
+	Q_PROPERTY(quint32 overviewSelectedWindowId READ default NOTIFY overviewSelectedWindowIdChanged BINDABLE bindableOverviewSelectedWindowId);
+	/// Stable tag ID of the active workspace, or 0.
+	Q_PROPERTY(quint32 activeTag READ default NOTIFY activeTagChanged BINDABLE bindableActiveTag);
 	/// Compact workspace index of the active workspace, or -1.
 	Q_PROPERTY(qint32 activeWorkspaceIndex READ default NOTIFY activeWorkspaceIndexChanged BINDABLE bindableActiveWorkspaceIndex);
 	/// Layouts supported by the running Triad instance.
@@ -98,15 +98,66 @@ public:
 	/// Focus a workspace by compact index.
 	Q_INVOKABLE static qint32 focusWorkspace(qint32 workspaceIndex);
 	/// Focus a workspace by stable tag ID.
-	Q_INVOKABLE static qint32 focusTag(qint32 tagId);
+	Q_INVOKABLE static qint32 focusTag(quint32 tagId);
 	/// Focus a window by stable Triad window ID.
-	Q_INVOKABLE static qint32 focusWindow(qint32 windowId);
+	Q_INVOKABLE static qint32 focusWindow(quint32 windowId);
 	/// Close the focused window, or a specific window when `windowId` is non-zero.
-	Q_INVOKABLE static qint32 closeWindow(qint32 windowId = 0);
+	Q_INVOKABLE static qint32 closeWindow(quint32 windowId = 0);
 	/// Advance the active workspace through Triad's configured layout cycle.
 	Q_INVOKABLE static qint32 switchLayout();
 	/// Set a Triad layout, optionally with `{ tag: id }` or `{ workspace_idx: index }` target.
 	Q_INVOKABLE static qint32 setLayout(const QString& layoutId, const QVariantMap& target = {});
+	/// Spawn a process using Triad's configured spawn context.
+	Q_INVOKABLE static qint32 spawn(const QStringList& argv);
+	/// Switch keyboard layout with no argument, `next`, `prev`, or an index.
+	Q_INVOKABLE static qint32 switchKeyboardLayout(const QVariant& layout = {});
+	/// Disable all currently enabled monitors.
+	Q_INVOKABLE static qint32 powerOffMonitors();
+	/// Restore monitors disabled by Triad.
+	Q_INVOKABLE static qint32 powerOnMonitors();
+	/// Disable one monitor by output name.
+	Q_INVOKABLE static qint32 powerOffMonitor(const QString& output);
+	/// Restore one monitor by output name.
+	Q_INVOKABLE static qint32 powerOnMonitor(const QString& output);
+	/// Toggle Triad overview.
+	Q_INVOKABLE static qint32 toggleOverview();
+	/// Open Triad overview.
+	Q_INVOKABLE static qint32 openOverview();
+	/// Close Triad overview.
+	Q_INVOKABLE static qint32 closeOverview();
+	/// Toggle the default scratchpad.
+	Q_INVOKABLE static qint32 toggleScratchpad();
+	/// Toggle a named scratchpad.
+	Q_INVOKABLE static qint32 toggleNamedScratchpad(const QString& name);
+	/// Move the focused window to the default scratchpad.
+	Q_INVOKABLE static qint32 moveToScratchpad();
+	/// Move the focused window to a named scratchpad.
+	Q_INVOKABLE static qint32 moveToNamedScratchpad(const QString& name);
+	/// Toggle floating for the focused window.
+	Q_INVOKABLE static qint32 toggleFloating();
+	/// Toggle fullscreen for the focused window, or a specific window ID.
+	Q_INVOKABLE static qint32 fullscreenWindow(quint32 windowId = 0);
+	/// Toggle maximized state for the focused window.
+	Q_INVOKABLE static qint32 toggleMaximized();
+	/// Minimize the focused window.
+	Q_INVOKABLE static qint32 minimize();
+	/// Move the focused window to a stable tag ID.
+	Q_INVOKABLE static qint32 moveToTag(quint32 tagId);
+	/// Move the focused window to a compact workspace index.
+	Q_INVOKABLE static qint32 moveToWorkspace(qint32 workspaceIndex);
+	/// Move a specific window to a stable tag ID.
+	Q_INVOKABLE static qint32 moveWindowToTag(quint32 windowId, quint32 tagId, bool follow = true);
+	/// Move a specific window to a compact workspace index.
+	Q_INVOKABLE static qint32
+	moveWindowToWorkspace(quint32 windowId, qint32 workspaceIndex, bool follow = true);
+	/// Focus an output by name.
+	Q_INVOKABLE static qint32 focusOutput(const QString& output);
+	/// Move the active workspace to an output by name.
+	Q_INVOKABLE static qint32 moveWorkspaceToOutput(const QString& output);
+	/// Move the focused window to an output by name.
+	Q_INVOKABLE static qint32 moveToOutput(const QString& output);
+	/// Create or focus a dynamic workspace.
+	Q_INVOKABLE static qint32 newWorkspace();
 	/// Return command catalog metadata for a command name or alias.
 	Q_INVOKABLE static QVariantMap commandSpec(const QString& name);
 	/// True when the command catalog contains a command name or alias.
@@ -132,8 +183,8 @@ public:
 	[[nodiscard]] static QBindable<TriadOutput*> bindableFocusedOutput();
 	[[nodiscard]] static QBindable<TriadWindow*> bindableFocusedWindow();
 	[[nodiscard]] static QBindable<bool> bindableOverviewOpen();
-	[[nodiscard]] static QBindable<qint32> bindableOverviewSelectedWindowId();
-	[[nodiscard]] static QBindable<qint32> bindableActiveTag();
+	[[nodiscard]] static QBindable<quint32> bindableOverviewSelectedWindowId();
+	[[nodiscard]] static QBindable<quint32> bindableActiveTag();
 	[[nodiscard]] static QBindable<qint32> bindableActiveWorkspaceIndex();
 	[[nodiscard]] static QBindable<qint32> bindableCurrentKeyboardLayoutIndex();
 

@@ -20,6 +20,8 @@
 using namespace qs::triad;
 
 namespace {
+constexpr quint32 HighWindowId = 3000000000U;
+
 QByteArray ackReply() {
 	return R"({"ok":true,"triad":{"version":1,"type":"ack"}})"
 	       "\n";
@@ -31,12 +33,51 @@ QByteArray errorReply(const char* error) {
 
 QByteArray commandsReply() {
 	return R"({"ok":true,"triad":{"version":1,"type":"commands","catalog":{"version":1,"commands":[)"
-	       R"({"name":"focus-window","usage":"focus-window <window-id>","arg_shape":"required-window-id","aliases":[]},)"
+	       R"({"name":"focus-next","usage":"focus-next","arg_shape":"none","aliases":[]},)"
 	       R"({"name":"close-window","usage":"close-window [window-id]","arg_shape":"optional-window-id","aliases":["kill-window"]},)"
+	       R"({"name":"focus-window","usage":"focus-window <window-id>","arg_shape":"required-window-id","aliases":[]},)"
 	       R"({"name":"move-window-to-tag","usage":"move-window-to-tag <window-id> <tag> [follow]","arg_shape":"window-tag-follow","aliases":[]},)"
+	       R"({"name":"move-window-to-workspace","usage":"move-window-to-workspace <window-id> <workspace-idx> [follow]","arg_shape":"window-workspace-follow","aliases":[]},)"
+	       R"({"name":"set-window-floating","usage":"set-window-floating <window-id> true|false","arg_shape":"window-bool","aliases":[]},)"
+	       R"({"name":"set-layout-for-workspace","usage":"set-layout-for-workspace <tag> <layout>","arg_shape":"tag-layout","aliases":[]},)"
+	       R"({"name":"layout-custom","usage":"layout-custom <name>","arg_shape":"required-name","aliases":[]},)"
+	       R"({"name":"power-off-monitor","usage":"power-off-monitor <output>","arg_shape":"required-output","aliases":[]},)"
+	       R"({"name":"power-on-monitor","usage":"power-on-monitor <output>","arg_shape":"required-output","aliases":[]},)"
+	       R"({"name":"adjust-master-ratio","usage":"adjust-master-ratio <delta>","arg_shape":"required-float-delta","aliases":[]},)"
+	       R"({"name":"master-ratio","usage":"master-ratio <value>","arg_shape":"required-float-value","aliases":[]},)"
+	       R"({"name":"set-column-width","usage":"set-column-width <value>","arg_shape":"required-float-value","aliases":[]},)"
+	       R"({"name":"master-count","usage":"master-count <count>","arg_shape":"required-int-count","aliases":[]},)"
+	       R"({"name":"adjust-master-count","usage":"adjust-master-count <delta>","arg_shape":"required-int-delta","aliases":[]},)"
+	       R"({"name":"switch-proportion-preset","usage":"switch-proportion-preset [delta]","arg_shape":"optional-int-delta","aliases":[]},)"
+	       R"({"name":"move-floating","usage":"move-floating <dx> <dy>","arg_shape":"move-delta","aliases":[]},)"
+	       R"({"name":"resize-floating","usage":"resize-floating <dw> <dh>","arg_shape":"resize-delta","aliases":[]},)"
+	       R"({"name":"recent-window-next","usage":"recent-window-next [--scope] [--filter]","arg_shape":"recent-advance","aliases":[]},)"
+	       R"({"name":"recent-window-scope","usage":"recent-window-scope all|workspace|output","arg_shape":"recent-scope","aliases":[]},)"
 	       R"({"name":"spawn","usage":"spawn <argv...>","arg_shape":"spawn-argv","aliases":[]},)"
+	       R"({"name":"warp-pointer","usage":"warp-pointer <x> <y>","arg_shape":"warp-pointer","aliases":[]},)"
+	       R"({"name":"screenshot","usage":"screenshot [--path <path>]","arg_shape":"screenshot","aliases":[]},)"
+	       R"({"name":"split-tree-layout-cycle","usage":"split-tree-layout-cycle <modes...>","arg_shape":"split-tree-mode-list","aliases":[]},)"
+	       R"({"name":"frame-resize-left","usage":"frame-resize-left [delta]","arg_shape":"optional-float-delta","aliases":[]},)"
 	       R"({"name":"switch-keyboard-layout","usage":"switch-keyboard-layout [next|prev|index]","arg_shape":"keyboard-layout-target","aliases":[]},)"
-	       R"({"name":"screenshot","usage":"screenshot [--path <path>]","arg_shape":"screenshot","aliases":[]})"
+	       R"({"name":"power-off-monitors","usage":"power-off-monitors","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"power-on-monitors","usage":"power-on-monitors","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"toggle-overview","usage":"toggle-overview","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"open-overview","usage":"open-overview","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"close-overview","usage":"close-overview","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"toggle-scratchpad","usage":"toggle-scratchpad","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"toggle-named-scratchpad","usage":"toggle-named-scratchpad <name>","arg_shape":"required-name","aliases":[]},)"
+	       R"({"name":"move-to-scratchpad","usage":"move-to-scratchpad","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"move-to-named-scratchpad","usage":"move-to-named-scratchpad <name>","arg_shape":"required-name","aliases":[]},)"
+	       R"({"name":"toggle-floating","usage":"toggle-floating","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"fullscreen-window","usage":"fullscreen-window [window-id]","arg_shape":"optional-window-id","aliases":["toggle-fullscreen"]},)"
+	       R"({"name":"maximize-window-to-edges","usage":"maximize-window-to-edges","arg_shape":"none","aliases":["toggle-maximized"]},)"
+	       R"({"name":"minimize","usage":"minimize","arg_shape":"none","aliases":[]},)"
+	       R"({"name":"move-to-tag","usage":"move-to-tag <tag>","arg_shape":"required-tag","aliases":[]},)"
+	       R"({"name":"move-to-workspace","usage":"move-to-workspace <workspace-idx>","arg_shape":"required-workspace-idx","aliases":[]},)"
+	       R"({"name":"focus-output","usage":"focus-output <output>","arg_shape":"required-output","aliases":[]},)"
+	       R"({"name":"move-workspace-to-output","usage":"move-workspace-to-output <output>","arg_shape":"required-output","aliases":[]},)"
+	       R"({"name":"move-to-output","usage":"move-to-output <output>","arg_shape":"required-output","aliases":[]},)"
+	       R"({"name":"new-workspace","usage":"new-workspace","arg_shape":"none","aliases":[]})"
 	       R"(],"special_requests":[{"name":"layout-state"}]}}})"
 	       "\n";
 }
@@ -59,9 +100,9 @@ QByteArray layoutEvent(const char* layout = "scroller") {
 	     + R"(","layout_kind":"columns","runtime_kind":"scroller","layout_source":"core",)"
 	       R"("fallback_layout":"","is_configured":true,"is_active":true,)"
 	       R"("is_output_visible":true,"is_urgent":false,"occupied":true,)"
-	       R"("focused_window_id":7,"columns":[{"idx":1,"windows":[7]}],)"
+	       R"("focused_window_id":3000000000,"columns":[{"idx":1,"windows":[3000000000]}],)"
 	       R"("frames":[{"id":1,"kind":"leaf","focused":true}],)"
-	       R"("bsp_nodes":[{"id":1,"kind":"leaf","window_id":7}],)"
+	       R"("bsp_nodes":[{"id":1,"kind":"leaf","window_id":3000000000}],)"
 	       R"("split_nodes":[{"id":2,"kind":"leaf"}],)"
 	       R"("master_count":1,"master_split_ratio":0.5,)"
 	       R"("viewport":{"target_x":1,"current_x":0.5,"target_y":2,"current_y":1.5}},)"
@@ -78,7 +119,7 @@ QByteArray layoutEvent(const char* layout = "scroller") {
 QByteArray stateEvent() {
 	return R"({"triad":{"version":1,"event":"state-changed","state":{"version":1,)"
 	       R"("capabilities":{"event_stream":true,"state":true},)"
-	       R"("overview":{"is_open":true,"selected_window_id":7},)"
+	       R"("overview":{"is_open":true,"selected_window_id":3000000000},)"
 	       R"("keyboard_layouts":["us"],"current_keyboard_layout_idx":0,)"
 	       R"("layout":{"version":1,"layouts":[{"kind":"builtin","id":"scroller"}],)"
 	       R"("layout_cycle":["scroller","grid"],)"
@@ -88,15 +129,15 @@ QByteArray stateEvent() {
 	       R"("layout":"scroller","layout_kind":"columns","runtime_kind":"scroller",)"
 	       R"("layout_source":"core","fallback_layout":"","is_configured":true,)"
 	       R"("is_active":true,"is_output_visible":true,"is_urgent":false,)"
-	       R"("occupied":true,"focused_window_id":7,"columns":[{"idx":1,"windows":[7]}],)"
+	       R"("occupied":true,"focused_window_id":3000000000,"columns":[{"idx":1,"windows":[3000000000]}],)"
 	       R"("frames":[{"id":1,"kind":"leaf","focused":true}],)"
-	       R"("bsp_nodes":[{"id":1,"kind":"leaf","window_id":7}],)"
+	       R"("bsp_nodes":[{"id":1,"kind":"leaf","window_id":3000000000}],)"
 	       R"("split_nodes":[{"id":2,"kind":"leaf"}],"master_count":1,"master_split_ratio":0.5,)"
 	       R"("viewport":{"target_x":1,"current_x":0.5,"target_y":2,"current_y":1.5}}]},)"
 	       R"("outputs":[{"id":1,"name":"DP-1","connected":true,"is_primary":true,)"
 	       R"("refresh_rate":60000,"physical_width":600,"physical_height":340,)"
 	       R"("scale":1,"transform":"Normal","geometry":{"x":0,"y":0,"width":1920,"height":1080}}],)"
-	       R"("windows":[{"id":7,"pid":1234,"parent_id":null,"title":"Terminal",)"
+	       R"("windows":[{"id":3000000000,"pid":1234,"parent_id":null,"title":"Terminal",)"
 	       R"("app_id":"kitty","tag_id":1,"workspace_idx":1,"output":"DP-1",)"
 	       R"("position":{"column_idx":1,"window_idx":1},"is_focused":true,)"
 	       R"("is_floating":false,"is_maximized":false,"is_minimized":false,)"
@@ -179,13 +220,13 @@ private slots:
 		QTRY_COMPARE(ipc->workspaces()->valueList().size(), 1);
 		QTRY_COMPARE(ipc->outputs()->valueList().size(), 1);
 		QTRY_COMPARE(ipc->windows()->valueList().size(), 1);
-		QTRY_COMPARE(ipc->commandsCatalog().value("commands").toList().size(), 6);
+		QTRY_VERIFY(ipc->commandsCatalog().value("commands").toList().size() >= 40);
 
 		QCOMPARE(ipc->bindableFocusedWorkspace().value()->bindableTagId().value(), 1);
 		QCOMPARE(ipc->bindableActiveTag().value(), 1);
 		QCOMPARE(ipc->bindableActiveWorkspaceIndex().value(), 1);
 		QCOMPARE(ipc->bindableOverviewOpen().value(), true);
-		QCOMPARE(ipc->bindableOverviewSelectedWindowId().value(), 7);
+		QCOMPARE(ipc->bindableOverviewSelectedWindowId().value(), HighWindowId);
 		QCOMPARE(ipc->layouts().size(), 1);
 		QCOMPARE(ipc->layoutCycle(), QStringList({"scroller", "grid"}));
 		QCOMPARE(ipc->layoutCycleEntries().size(), 1);
@@ -196,8 +237,9 @@ private slots:
 		QCOMPARE(output->bindablePhysicalHeight().value(), 340);
 
 		auto* window = ipc->bindableFocusedWindow().value();
+		QCOMPARE(window->bindableId().value(), HighWindowId);
 		QCOMPARE(window->bindableTitle().value(), QString("Terminal"));
-		QCOMPARE(window->bindableParentId().value(), -1);
+		QCOMPARE(window->bindableParentId().value(), 0U);
 		QCOMPARE(window->bindableColumnIndex().value(), 1);
 		QCOMPARE(window->bindableWindowIndex().value(), 1);
 		QCOMPARE(window->bindableFullscreenOutput().value(), 1);
@@ -233,7 +275,7 @@ private slots:
 		QTRY_COMPARE(spy.size(), 1);
 		QCOMPARE(spy.at(0).at(0).toInt(), requestId);
 		QCOMPARE(spy.at(0).at(1).toBool(), true);
-		QCOMPARE(ipc->commandsCatalog().value("commands").toList().size(), 6);
+		QVERIFY(ipc->commandsCatalog().value("commands").toList().size() >= 40);
 
 		auto badId = ipc->sendAction("focus-window", {{"id", QString("bad")}});
 		QTRY_COMPARE(spy.size(), 2);
@@ -305,25 +347,72 @@ private slots:
 		QTRY_COMPARE(this->requestCount("commands"), before + 1);
 	}
 
+	void refreshesCommandCatalogOnReconnect() {
+		auto* ipc = TriadIpc::instance();
+		QTRY_VERIFY(ipc->bindableConnected().value());
+		QVERIFY(this->eventClient != nullptr);
+
+		auto streamBefore = this->requestCount("event-stream");
+		auto commandsBefore = this->requestCount("commands");
+		this->eventClient->disconnectFromServer();
+
+		QTRY_VERIFY(this->requestCount("event-stream") > streamBefore);
+		QTRY_VERIFY(this->requestCount("commands") > commandsBefore);
+		QVERIFY(ipc->commandsCatalog().value("commands").toList().size() >= 40);
+	}
+
 	void validatesCommandCatalogActions() {
 		auto* ipc = TriadIpc::instance();
 		QTRY_VERIFY(ipc->hasCommand("focus-window"));
 		QVERIFY(ipc->hasCommand("kill-window"));
 		QCOMPARE(ipc->commandSpec("kill-window").value("name").toString(), QString("close-window"));
 
-		QVERIFY(ipc->validateAction("focus-window", {{"id", 7}}));
+		QVERIFY(ipc->validateAction("focus-window", {{"id", HighWindowId}}));
 		QVERIFY(!ipc->validateAction("focus-window", {{"id", QString("bad")}}));
-		QVERIFY(ipc->validateAction("move-window-to-tag", {{"id", 7}, {"tag", 2}, {"follow", true}}));
+		QVERIFY(!ipc->validateAction("focus-window", {{"id", 0}}));
+		QVERIFY(!ipc->validateAction("focus-window", {{"id", -1}}));
+		QVERIFY(!ipc->validateAction("focus-window", {{"id", 7.5}}));
+		QVERIFY(ipc->validateAction("move-window-to-tag", {{"id", HighWindowId}, {"tag", 2U}, {"follow", true}}));
+		QVERIFY(ipc->validateAction("move-window-to-workspace", {{"id", HighWindowId}, {"workspace_idx", 2U}}));
+		QVERIFY(ipc->validateAction("set-window-floating", {{"id", HighWindowId}, {"value", false}}));
+		QVERIFY(ipc->validateAction("set-layout-for-workspace", {{"tag", 2U}, {"layout", QString("grid")}}));
+		QVERIFY(ipc->validateAction("layout-custom", {{"name", QString("notion")}}));
+		QVERIFY(!ipc->validateAction("layout-custom", {{"name", QString()}}));
+		QVERIFY(ipc->validateAction("power-off-monitor", {{"output", QString("DP-1")}}));
+		QVERIFY(!ipc->validateAction("power-off-monitor", {{"output", QString()}}));
+		QVERIFY(ipc->validateAction("adjust-master-ratio", {{"delta", -0.05}}));
+		QVERIFY(ipc->validateAction("master-ratio", {{"value", 0.5}}));
+		QVERIFY(ipc->validateAction("set-column-width", {{"width", 0.5}}));
+		QVERIFY(ipc->validateAction("master-count", {{"count", 2}}));
+		QVERIFY(!ipc->validateAction("master-count", {{"count", 2.5}}));
+		QVERIFY(ipc->validateAction("adjust-master-count", {{"delta", -1}}));
+		QVERIFY(ipc->validateAction("switch-proportion-preset", {}));
+		QVERIFY(ipc->validateAction("switch-proportion-preset", {{"delta", -1}}));
+		QVERIFY(ipc->validateAction("move-floating", {{"dx", 12}, {"dy", -34}}));
+		QVERIFY(ipc->validateAction("resize-floating", {{"dw", 12}, {"dh", -34}}));
+		QVERIFY(ipc->validateAction("recent-window-next", {{"scope", QString("output")}, {"filter", QString("app-id")}}));
+		QVERIFY(ipc->validateAction("recent-window-scope", {{"scope", QString("workspace")}}));
 		QVERIFY(ipc->validateAction("spawn", {{"argv", QStringList({"kitty"})}}));
+		QVERIFY(!ipc->validateAction("spawn", {{"argv", QStringList()}}));
+		QVERIFY(!ipc->validateAction("spawn", {{"argv", QVariantList({QString("sh"), 1})}}));
+		QVERIFY(ipc->validateAction("warp-pointer", {{"x", 12}, {"y", 34}}));
+		QVERIFY(!ipc->validateAction("warp-pointer", {{"x", 12.5}, {"y", 34}}));
 		QVERIFY(ipc->validateAction("switch-keyboard-layout", {{"layout", QString("next")}}));
+		QVERIFY(ipc->validateAction("switch-keyboard-layout", {{"layout", 1}}));
+		QVERIFY(!ipc->validateAction("switch-keyboard-layout", {{"layout", 1.5}}));
+		QVERIFY(ipc->validateAction("split-tree-layout-cycle", {{"argv", QStringList({"splith", "stacking"})}}));
+		QVERIFY(ipc->validateAction("frame-resize-left", {}));
+		QVERIFY(ipc->validateAction("frame-resize-left", {{"delta", 0.05}}));
 		QVERIFY(ipc->validateAction("screenshot", {{"path", QString("/tmp/a.png")}, {"show_pointer", true}}));
+		QVERIFY(!ipc->validateAction("screenshot", {{"write_to_disk", false}, {"copy_to_clipboard", false}}));
 
 		QSignalSpy spy(ipc, &TriadIpc::requestFinished);
 		QCOMPARE(ipc->sendValidatedAction("focus-window", {{"id", QString("bad")}}), -1);
 		QCOMPARE(spy.size(), 0);
-		auto requestId = ipc->sendValidatedAction("focus-window", {{"id", 7}});
+		auto requestId = ipc->sendValidatedAction("focus-window", {{"id", HighWindowId}});
 		QTRY_COMPARE(spy.size(), 1);
 		QCOMPARE(spy.at(0).at(0).toInt(), requestId);
+		QCOMPARE(this->lastRequestPayload("action").value("id").toDouble(), static_cast<double>(HighWindowId));
 	}
 
 	void clearsExplicitlyNullFocusedWindow() {

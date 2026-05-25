@@ -1,5 +1,6 @@
 #include "workspace.hpp"
 
+#include <limits>
 #include <qvariant.h>
 
 #include "connection.hpp"
@@ -13,6 +14,16 @@ qint32 intOrInvalid(const QVariantMap& object, const QString& key) {
 	return value.isValid() && !value.isNull() ? value.toInt() : -1;
 }
 
+quint32 uintOrNone(const QVariantMap& object, const QString& key) {
+	auto value = object.value(key);
+	if (!value.isValid() || value.isNull()) return 0;
+
+	auto ok = false;
+	auto parsed = value.toULongLong(&ok);
+	if (!ok || parsed > std::numeric_limits<quint32>::max()) return 0;
+	return static_cast<quint32>(parsed);
+}
+
 QString stringOrEmpty(const QVariantMap& object, const QString& key) {
 	auto value = object.value(key);
 	return value.isValid() && !value.isNull() ? value.toString() : QString();
@@ -23,7 +34,7 @@ TriadWorkspace::TriadWorkspace(TriadIpc* ipc): QObject(ipc), ipc(ipc) {}
 
 void TriadWorkspace::updateFromObject(const QVariantMap& object) {
 	this->mLastIpcObject = object;
-	this->bTagId = intOrInvalid(object, "tag_id");
+	this->bTagId = uintOrNone(object, "tag_id");
 	this->bWorkspaceIndex = intOrInvalid(object, "workspace_idx");
 	this->bName = stringOrEmpty(object, "name");
 	this->bOutputName = stringOrEmpty(object, "output");
@@ -37,7 +48,7 @@ void TriadWorkspace::updateFromObject(const QVariantMap& object) {
 	this->bOutputVisible = object.value("is_output_visible").toBool();
 	this->bOccupied = object.value("occupied").toBool();
 	this->bUrgent = object.value("is_urgent").toBool();
-	this->bFocusedWindowId = intOrInvalid(object, "focused_window_id");
+	this->bFocusedWindowId = uintOrNone(object, "focused_window_id");
 	this->bMasterCount = intOrInvalid(object, "master_count");
 	this->bMasterSplitRatio = object.value("master_split_ratio").toReal();
 	this->mColumns = object.value("columns").toList();

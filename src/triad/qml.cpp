@@ -70,17 +70,72 @@ qint32 TriadIpcQml::dispatchBinding(
 qint32 TriadIpcQml::focusWorkspace(qint32 workspaceIndex) {
 	return TriadIpc::instance()->focusWorkspace(workspaceIndex);
 }
-qint32 TriadIpcQml::focusTag(qint32 tagId) { return TriadIpc::instance()->focusTag(tagId); }
-qint32 TriadIpcQml::focusWindow(qint32 windowId) {
+qint32 TriadIpcQml::focusTag(quint32 tagId) { return TriadIpc::instance()->focusTag(tagId); }
+qint32 TriadIpcQml::focusWindow(quint32 windowId) {
 	return TriadIpc::instance()->focusWindow(windowId);
 }
-qint32 TriadIpcQml::closeWindow(qint32 windowId) {
+qint32 TriadIpcQml::closeWindow(quint32 windowId) {
 	return TriadIpc::instance()->closeWindow(windowId);
 }
 qint32 TriadIpcQml::switchLayout() { return TriadIpc::instance()->switchLayout(); }
 qint32 TriadIpcQml::setLayout(const QString& layoutId, const QVariantMap& target) {
 	return TriadIpc::instance()->setLayout(layoutId, target);
 }
+qint32 TriadIpcQml::spawn(const QStringList& argv) { return TriadIpc::instance()->spawn(argv); }
+qint32 TriadIpcQml::switchKeyboardLayout(const QVariant& layout) {
+	return TriadIpc::instance()->switchKeyboardLayout(layout);
+}
+qint32 TriadIpcQml::powerOffMonitors() { return TriadIpc::instance()->powerOffMonitors(); }
+qint32 TriadIpcQml::powerOnMonitors() { return TriadIpc::instance()->powerOnMonitors(); }
+qint32 TriadIpcQml::powerOffMonitor(const QString& output) {
+	return TriadIpc::instance()->powerOffMonitor(output);
+}
+qint32 TriadIpcQml::powerOnMonitor(const QString& output) {
+	return TriadIpc::instance()->powerOnMonitor(output);
+}
+qint32 TriadIpcQml::toggleOverview() { return TriadIpc::instance()->toggleOverview(); }
+qint32 TriadIpcQml::openOverview() { return TriadIpc::instance()->openOverview(); }
+qint32 TriadIpcQml::closeOverview() { return TriadIpc::instance()->closeOverview(); }
+qint32 TriadIpcQml::toggleScratchpad() { return TriadIpc::instance()->toggleScratchpad(); }
+qint32 TriadIpcQml::toggleNamedScratchpad(const QString& name) {
+	return TriadIpc::instance()->toggleNamedScratchpad(name);
+}
+qint32 TriadIpcQml::moveToScratchpad() { return TriadIpc::instance()->moveToScratchpad(); }
+qint32 TriadIpcQml::moveToNamedScratchpad(const QString& name) {
+	return TriadIpc::instance()->moveToNamedScratchpad(name);
+}
+qint32 TriadIpcQml::toggleFloating() { return TriadIpc::instance()->toggleFloating(); }
+qint32 TriadIpcQml::fullscreenWindow(quint32 windowId) {
+	return TriadIpc::instance()->fullscreenWindow(windowId);
+}
+qint32 TriadIpcQml::toggleMaximized() { return TriadIpc::instance()->toggleMaximized(); }
+qint32 TriadIpcQml::minimize() { return TriadIpc::instance()->minimize(); }
+qint32 TriadIpcQml::moveToTag(quint32 tagId) {
+	return TriadIpc::instance()->moveToTag(tagId);
+}
+qint32 TriadIpcQml::moveToWorkspace(qint32 workspaceIndex) {
+	return TriadIpc::instance()->moveToWorkspace(workspaceIndex);
+}
+qint32 TriadIpcQml::moveWindowToTag(quint32 windowId, quint32 tagId, bool follow) {
+	return TriadIpc::instance()->moveWindowToTag(windowId, tagId, follow);
+}
+qint32 TriadIpcQml::moveWindowToWorkspace(
+    quint32 windowId,
+    qint32 workspaceIndex,
+    bool follow
+) {
+	return TriadIpc::instance()->moveWindowToWorkspace(windowId, workspaceIndex, follow);
+}
+qint32 TriadIpcQml::focusOutput(const QString& output) {
+	return TriadIpc::instance()->focusOutput(output);
+}
+qint32 TriadIpcQml::moveWorkspaceToOutput(const QString& output) {
+	return TriadIpc::instance()->moveWorkspaceToOutput(output);
+}
+qint32 TriadIpcQml::moveToOutput(const QString& output) {
+	return TriadIpc::instance()->moveToOutput(output);
+}
+qint32 TriadIpcQml::newWorkspace() { return TriadIpc::instance()->newWorkspace(); }
 QVariantMap TriadIpcQml::commandSpec(const QString& name) {
 	return TriadIpc::instance()->commandSpec(name);
 }
@@ -123,10 +178,10 @@ QBindable<TriadWindow*> TriadIpcQml::bindableFocusedWindow() {
 QBindable<bool> TriadIpcQml::bindableOverviewOpen() {
 	return TriadIpc::instance()->bindableOverviewOpen();
 }
-QBindable<qint32> TriadIpcQml::bindableOverviewSelectedWindowId() {
+QBindable<quint32> TriadIpcQml::bindableOverviewSelectedWindowId() {
 	return TriadIpc::instance()->bindableOverviewSelectedWindowId();
 }
-QBindable<qint32> TriadIpcQml::bindableActiveTag() {
+QBindable<quint32> TriadIpcQml::bindableActiveTag() {
 	return TriadIpc::instance()->bindableActiveTag();
 }
 QBindable<qint32> TriadIpcQml::bindableActiveWorkspaceIndex() {

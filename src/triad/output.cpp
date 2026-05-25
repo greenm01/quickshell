@@ -1,5 +1,6 @@
 #include "output.hpp"
 
+#include <limits>
 #include <qvariant.h>
 
 #include "connection.hpp"
@@ -10,6 +11,16 @@ namespace {
 qint32 intOrInvalid(const QVariantMap& object, const QString& key) {
 	auto value = object.value(key);
 	return value.isValid() && !value.isNull() ? value.toInt() : -1;
+}
+
+quint32 uintOrNone(const QVariantMap& object, const QString& key) {
+	auto value = object.value(key);
+	if (!value.isValid() || value.isNull()) return 0;
+
+	auto ok = false;
+	auto parsed = value.toULongLong(&ok);
+	if (!ok || parsed > std::numeric_limits<quint32>::max()) return 0;
+	return static_cast<quint32>(parsed);
 }
 
 QString stringOrEmpty(const QVariantMap& object, const QString& key) {
@@ -23,7 +34,7 @@ TriadOutput::TriadOutput(TriadIpc* ipc): QObject(ipc), ipc(ipc) {}
 void TriadOutput::updateFromObject(const QVariantMap& object) {
 	this->mLastIpcObject = object;
 	auto geometry = object.value("geometry").toMap();
-	this->bId = intOrInvalid(object, "id");
+	this->bId = uintOrNone(object, "id");
 	this->bName = stringOrEmpty(object, "name");
 	this->bPrimary = object.value("is_primary").toBool();
 	this->bConnected = object.value("connected", true).toBool();
