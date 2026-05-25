@@ -13,3 +13,11 @@ target_link_libraries(
 	"$<LINK_GROUP:RESCAN,quickshell-triadplugin,quickshell-coreplugin,quickshell-triad,quickshell-core,quickshell-window,quickshell-ui,quickshell-io>"
 )
 target_compile_definitions(triad-qml PRIVATE QS_TEST_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml_modules")
+
+qs_test(triad-live triad_live.cpp)
+target_link_libraries(
+	triad-live
+	PRIVATE
+	"$<LINK_GROUP:RESCAN,quickshell-triadplugin,quickshell-coreplugin,quickshell-triad,quickshell-core,quickshell-window,quickshell-ui,quickshell-io>"
+)
+target_compile_definitions(triad-live PRIVATE QS_TEST_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml_modules")
