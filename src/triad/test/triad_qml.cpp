@@ -55,9 +55,15 @@ QByteArray ack() {
 	       "\n";
 }
 
+QByteArray commandsReply() {
+	return R"({"ok":true,"triad":{"version":1,"type":"commands","catalog":{"version":1,"commands":[{"name":"focus-window","usage":"focus-window <window-id>","arg_shape":"required-window-id","aliases":[]}],"special_requests":[]}}})"
+	       "\n";
+}
+
 QByteArray handleRequest(const QByteArray& request) {
 	auto root = QJsonDocument::fromJson(request.trimmed()).object();
 	auto triad = root.value("triad").toObject();
+	if (triad.value("request").toString() == "commands") return commandsReply();
 	if (triad.value("request").toString() != "set-layout") return ack();
 
 	auto target = triad.value("target").toObject();
@@ -122,15 +128,33 @@ QtObject {
 	property int focusedWindowFloatingX: Triad.focusedWindow ? Triad.focusedWindow.floatingX : -1
 	property int focusedWindowSwallowedBy: Triad.focusedWindow ? Triad.focusedWindow.swallowedBy : -1
 	property int focusedWorkspaceColumnCount: Triad.focusedWorkspace ? Triad.focusedWorkspace.columns.length : -1
+	property int commandCount: Triad.commandsCatalog.commands ? Triad.commandsCatalog.commands.length : 0
+	property bool helperIdsReturned: false
+	property bool commandValidationWorks: false
 
 	function exerciseActions() {
-		Triad.focusWorkspace(1)
-		Triad.focusTag(1)
-		Triad.focusWindow(7)
-		Triad.closeWindow(7)
-		Triad.switchLayout()
-		Triad.setLayout("grid", {"tag": 1})
-		Triad.dispatch("noop", {})
+		commandValidationWorks = Triad.hasCommand("focus-window") && Triad.validateAction("focus-window", {"id": 7})
+		const ids = [
+			Triad.refreshCapabilities(),
+			Triad.refreshWorkspaces(),
+			Triad.refreshOutputs(),
+			Triad.refreshOverview(),
+			Triad.refreshKeyboardLayouts(),
+			Triad.refreshCommands(),
+			Triad.focusWorkspace(1),
+			Triad.focusTag(1),
+			Triad.focusWindow(7),
+			Triad.closeWindow(7),
+			Triad.switchLayout(),
+			Triad.setLayout("grid", {"tag": 1}),
+			Triad.dispatch("noop", {}),
+			Triad.dispatchBinding("key", "Super+h"),
+			Triad.sendValidatedAction("focus-window", {"id": 7})
+		]
+		helperIdsReturned = true
+		for (let i = 0; i < ids.length; i++) {
+			if (ids[i] <= 0) helperIdsReturned = false
+		}
 	}
 }
 )",
@@ -158,7 +182,10 @@ QtObject {
 		QCOMPARE(object->property("focusedWindowFloatingX").toInt(), 10);
 		QCOMPARE(object->property("focusedWindowSwallowedBy").toInt(), 8);
 		QCOMPARE(object->property("focusedWorkspaceColumnCount").toInt(), 1);
+		QTRY_COMPARE(object->property("commandCount").toInt(), 1);
 		QVERIFY(QMetaObject::invokeMethod(object, "exerciseActions"));
+		QVERIFY(object->property("commandValidationWorks").toBool());
+		QVERIFY(object->property("helperIdsReturned").toBool());
 
 		delete object;
 	}

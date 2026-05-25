@@ -6,6 +6,7 @@
 #include <qjsonarray.h>
 #include <qjsonobject.h>
 #include <qlocalsocket.h>
+#include <qmetatype.h>
 #include <qobject.h>
 #include <qproperty.h>
 #include <qqmlintegration.h>
@@ -56,18 +57,30 @@ public:
 
 	[[nodiscard]] QString socketPath() const { return this->mSocketPath; }
 
-	void refresh();
-	void refreshLayout();
-	void refreshWindows();
+	qint32 refresh();
+	qint32 refreshLayout();
+	qint32 refreshWindows();
+	qint32 refreshCapabilities();
+	qint32 refreshWorkspaces();
+	qint32 refreshOutputs();
+	qint32 refreshFocusedWindow();
+	qint32 refreshOverview();
+	qint32 refreshKeyboardLayouts();
+	qint32 refreshCommands();
 	qint32 sendRequest(const QString& request, const QVariantMap& payload = {});
 	qint32 sendAction(const QString& action, const QVariantMap& payload = {});
-	void dispatch(const QString& action, const QVariantMap& payload = {});
-	void focusWorkspace(qint32 workspaceIndex);
-	void focusTag(qint32 tagId);
-	void focusWindow(qint32 windowId);
-	void closeWindow(qint32 windowId = 0);
-	void switchLayout();
-	void setLayout(const QString& layoutId, const QVariantMap& target = {});
+	qint32 dispatch(const QString& action, const QVariantMap& payload = {});
+	qint32 dispatchBinding(const QString& kind, const QString& binding, qint32 amount = 1);
+	qint32 focusWorkspace(qint32 workspaceIndex);
+	qint32 focusTag(qint32 tagId);
+	qint32 focusWindow(qint32 windowId);
+	qint32 closeWindow(qint32 windowId = 0);
+	qint32 switchLayout();
+	qint32 setLayout(const QString& layoutId, const QVariantMap& target = {});
+	[[nodiscard]] QVariantMap commandSpec(const QString& name) const;
+	[[nodiscard]] bool hasCommand(const QString& name) const;
+	[[nodiscard]] bool validateAction(const QString& action, const QVariantMap& payload) const;
+	qint32 sendValidatedAction(const QString& action, const QVariantMap& payload = {});
 
 	[[nodiscard]] ObjectModel<TriadWorkspace>* workspaces() { return &this->mWorkspaces; }
 	[[nodiscard]] ObjectModel<TriadOutput>* outputs() { return &this->mOutputs; }
@@ -133,10 +146,11 @@ private slots:
 private:
 	explicit TriadIpc();
 
-	using RequestCallback = std::function<void(bool, QJsonObject, QString)>;
+	using RequestCallback = std::function<void(qint32, bool, QJsonObject, QString)>;
 
 	void connectEventStream();
 	qint32 makeRequest(const QJsonObject& payload, RequestCallback callback = {});
+	qint32 makeTrackedRequest(const QJsonObject& payload);
 	void handleLine(const QByteArray& line);
 	void handleTriadObject(const QJsonObject& triad);
 	void handleState(const QJsonObject& state);
@@ -147,7 +161,14 @@ private:
 	void handleOutputs(const QJsonArray& outputs);
 	void handleWorkspaces(const QJsonArray& workspaces);
 	void updateDerivedState();
+	void autoRefreshCommands();
 	void setSocketPath(const QString& path);
+	[[nodiscard]] bool payloadMatchesShape(const QString& shape, const QVariantMap& payload) const;
+	[[nodiscard]] bool hasCommandPayloadField(
+	    const QVariantMap& payload,
+	    const QString& key,
+	    QMetaType::Type type
+	) const;
 	[[nodiscard]] QString discoverSocketPath() const;
 
 	QLocalSocket eventSocket;
@@ -173,6 +194,8 @@ private:
 	QVariantList mLayoutCycleEntries;
 	QStringList mKeyboardLayouts;
 	TriadIpcEvent event {this};
+	bool focusedWindowExplicitlyNull = false;
+	bool commandsAutoRefreshRequested = false;
 
 	Q_OBJECT_BINDABLE_PROPERTY(TriadIpc, bool, bConnected, &TriadIpc::connectedChanged);
 	Q_OBJECT_BINDABLE_PROPERTY(

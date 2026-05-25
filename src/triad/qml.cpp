@@ -35,27 +35,63 @@ TriadIpcQml::TriadIpcQml() {
 	// clang-format on
 }
 
-void TriadIpcQml::refresh() { TriadIpc::instance()->refresh(); }
-void TriadIpcQml::refreshLayout() { TriadIpc::instance()->refreshLayout(); }
-void TriadIpcQml::refreshWindows() { TriadIpc::instance()->refreshWindows(); }
+qint32 TriadIpcQml::refresh() { return TriadIpc::instance()->refresh(); }
+qint32 TriadIpcQml::refreshLayout() { return TriadIpc::instance()->refreshLayout(); }
+qint32 TriadIpcQml::refreshWindows() { return TriadIpc::instance()->refreshWindows(); }
+qint32 TriadIpcQml::refreshCapabilities() {
+	return TriadIpc::instance()->refreshCapabilities();
+}
+qint32 TriadIpcQml::refreshWorkspaces() { return TriadIpc::instance()->refreshWorkspaces(); }
+qint32 TriadIpcQml::refreshOutputs() { return TriadIpc::instance()->refreshOutputs(); }
+qint32 TriadIpcQml::refreshFocusedWindow() {
+	return TriadIpc::instance()->refreshFocusedWindow();
+}
+qint32 TriadIpcQml::refreshOverview() { return TriadIpc::instance()->refreshOverview(); }
+qint32 TriadIpcQml::refreshKeyboardLayouts() {
+	return TriadIpc::instance()->refreshKeyboardLayouts();
+}
+qint32 TriadIpcQml::refreshCommands() { return TriadIpc::instance()->refreshCommands(); }
 qint32 TriadIpcQml::sendRequest(const QString& request, const QVariantMap& payload) {
 	return TriadIpc::instance()->sendRequest(request, payload);
 }
 qint32 TriadIpcQml::sendAction(const QString& action, const QVariantMap& payload) {
 	return TriadIpc::instance()->sendAction(action, payload);
 }
-void TriadIpcQml::dispatch(const QString& action, const QVariantMap& payload) {
-	TriadIpc::instance()->dispatch(action, payload);
+qint32 TriadIpcQml::dispatch(const QString& action, const QVariantMap& payload) {
+	return TriadIpc::instance()->dispatch(action, payload);
 }
-void TriadIpcQml::focusWorkspace(qint32 workspaceIndex) {
-	TriadIpc::instance()->focusWorkspace(workspaceIndex);
+qint32 TriadIpcQml::dispatchBinding(
+    const QString& kind,
+    const QString& binding,
+    qint32 amount
+) {
+	return TriadIpc::instance()->dispatchBinding(kind, binding, amount);
 }
-void TriadIpcQml::focusTag(qint32 tagId) { TriadIpc::instance()->focusTag(tagId); }
-void TriadIpcQml::focusWindow(qint32 windowId) { TriadIpc::instance()->focusWindow(windowId); }
-void TriadIpcQml::closeWindow(qint32 windowId) { TriadIpc::instance()->closeWindow(windowId); }
-void TriadIpcQml::switchLayout() { TriadIpc::instance()->switchLayout(); }
-void TriadIpcQml::setLayout(const QString& layoutId, const QVariantMap& target) {
-	TriadIpc::instance()->setLayout(layoutId, target);
+qint32 TriadIpcQml::focusWorkspace(qint32 workspaceIndex) {
+	return TriadIpc::instance()->focusWorkspace(workspaceIndex);
+}
+qint32 TriadIpcQml::focusTag(qint32 tagId) { return TriadIpc::instance()->focusTag(tagId); }
+qint32 TriadIpcQml::focusWindow(qint32 windowId) {
+	return TriadIpc::instance()->focusWindow(windowId);
+}
+qint32 TriadIpcQml::closeWindow(qint32 windowId) {
+	return TriadIpc::instance()->closeWindow(windowId);
+}
+qint32 TriadIpcQml::switchLayout() { return TriadIpc::instance()->switchLayout(); }
+qint32 TriadIpcQml::setLayout(const QString& layoutId, const QVariantMap& target) {
+	return TriadIpc::instance()->setLayout(layoutId, target);
+}
+QVariantMap TriadIpcQml::commandSpec(const QString& name) {
+	return TriadIpc::instance()->commandSpec(name);
+}
+bool TriadIpcQml::hasCommand(const QString& name) {
+	return TriadIpc::instance()->hasCommand(name);
+}
+bool TriadIpcQml::validateAction(const QString& action, const QVariantMap& payload) {
+	return TriadIpc::instance()->validateAction(action, payload);
+}
+qint32 TriadIpcQml::sendValidatedAction(const QString& action, const QVariantMap& payload) {
+	return TriadIpc::instance()->sendValidatedAction(action, payload);
 }
 
 QString TriadIpcQml::socketPath() { return TriadIpc::instance()->socketPath(); }

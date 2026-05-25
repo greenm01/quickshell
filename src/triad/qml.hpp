@@ -67,29 +67,55 @@ public:
 	explicit TriadIpcQml();
 
 	/// Refresh full Triad state.
-	Q_INVOKABLE static void refresh();
+	Q_INVOKABLE static qint32 refresh();
 	/// Refresh Triad layout/workspace state.
-	Q_INVOKABLE static void refreshLayout();
+	Q_INVOKABLE static qint32 refreshLayout();
 	/// Refresh Triad window state.
-	Q_INVOKABLE static void refreshWindows();
+	Q_INVOKABLE static qint32 refreshWindows();
+	/// Refresh native Triad capabilities.
+	Q_INVOKABLE static qint32 refreshCapabilities();
+	/// Refresh Triad workspace state.
+	Q_INVOKABLE static qint32 refreshWorkspaces();
+	/// Refresh Triad output state.
+	Q_INVOKABLE static qint32 refreshOutputs();
+	/// Refresh Triad focused window state.
+	Q_INVOKABLE static qint32 refreshFocusedWindow();
+	/// Refresh Triad overview state.
+	Q_INVOKABLE static qint32 refreshOverview();
+	/// Refresh Triad keyboard layout state.
+	Q_INVOKABLE static qint32 refreshKeyboardLayouts();
+	/// Refresh Triad command catalog.
+	Q_INVOKABLE static qint32 refreshCommands();
 	/// Send a native Triad request. The returned ID is emitted by requestFinished.
 	Q_INVOKABLE static qint32 sendRequest(const QString& request, const QVariantMap& payload = {});
 	/// Send a native Triad action. The returned ID is emitted by requestFinished.
 	Q_INVOKABLE static qint32 sendAction(const QString& action, const QVariantMap& payload = {});
 	/// Dispatch a native Triad action.
-	Q_INVOKABLE static void dispatch(const QString& action, const QVariantMap& payload = {});
+	Q_INVOKABLE static qint32 dispatch(const QString& action, const QVariantMap& payload = {});
+	/// Dispatch a configured Triad binding without injecting raw input.
+	Q_INVOKABLE static qint32
+	dispatchBinding(const QString& kind, const QString& binding, qint32 amount = 1);
 	/// Focus a workspace by compact index.
-	Q_INVOKABLE static void focusWorkspace(qint32 workspaceIndex);
+	Q_INVOKABLE static qint32 focusWorkspace(qint32 workspaceIndex);
 	/// Focus a workspace by stable tag ID.
-	Q_INVOKABLE static void focusTag(qint32 tagId);
+	Q_INVOKABLE static qint32 focusTag(qint32 tagId);
 	/// Focus a window by stable Triad window ID.
-	Q_INVOKABLE static void focusWindow(qint32 windowId);
+	Q_INVOKABLE static qint32 focusWindow(qint32 windowId);
 	/// Close the focused window, or a specific window when `windowId` is non-zero.
-	Q_INVOKABLE static void closeWindow(qint32 windowId = 0);
+	Q_INVOKABLE static qint32 closeWindow(qint32 windowId = 0);
 	/// Advance the active workspace through Triad's configured layout cycle.
-	Q_INVOKABLE static void switchLayout();
+	Q_INVOKABLE static qint32 switchLayout();
 	/// Set a Triad layout, optionally with `{ tag: id }` or `{ workspace_idx: index }` target.
-	Q_INVOKABLE static void setLayout(const QString& layoutId, const QVariantMap& target = {});
+	Q_INVOKABLE static qint32 setLayout(const QString& layoutId, const QVariantMap& target = {});
+	/// Return command catalog metadata for a command name or alias.
+	Q_INVOKABLE static QVariantMap commandSpec(const QString& name);
+	/// True when the command catalog contains a command name or alias.
+	Q_INVOKABLE static bool hasCommand(const QString& name);
+	/// Validate an action payload against the loaded command catalog.
+	Q_INVOKABLE static bool validateAction(const QString& action, const QVariantMap& payload = {});
+	/// Send an action only when it validates against the loaded command catalog.
+	Q_INVOKABLE static qint32
+	sendValidatedAction(const QString& action, const QVariantMap& payload = {});
 
 	[[nodiscard]] static QString socketPath();
 	[[nodiscard]] static QVariantMap capabilities();

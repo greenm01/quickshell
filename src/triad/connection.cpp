@@ -13,6 +13,7 @@
 #include <qlocalsocket.h>
 #include <qlogging.h>
 #include <qloggingcategory.h>
+#include <qmetatype.h>
 #include <qobject.h>
 #include <qtenvironmentvariables.h>
 #include <qtimer.h>
@@ -69,6 +70,23 @@ QStringList stringListFromJson(const QJsonValue& value) {
 qint32 intOrInvalid(const QJsonObject& object, const QString& key) {
 	auto value = object.value(key);
 	return value.isUndefined() || value.isNull() ? -1 : value.toInt(-1);
+}
+
+bool isIntegral(const QVariant& value) {
+	auto type = value.metaType().id();
+	return type == QMetaType::Int || type == QMetaType::UInt || type == QMetaType::LongLong
+	    || type == QMetaType::ULongLong;
+}
+
+bool isNumeric(const QVariant& value) { return isIntegral(value) || value.metaType().id() == QMetaType::Double; }
+
+bool isString(const QVariant& value) { return value.metaType().id() == QMetaType::QString; }
+
+bool isBool(const QVariant& value) { return value.metaType().id() == QMetaType::Bool; }
+
+bool isList(const QVariant& value) {
+	auto type = value.metaType().id();
+	return type == QMetaType::QVariantList || type == QMetaType::QStringList;
 }
 } // namespace
 
@@ -151,6 +169,7 @@ void TriadIpc::eventSocketConnected() {
 	payload.insert("events", QJsonArray({"state", "layout", "window"}));
 	this->eventSocket.write(encoded(payload));
 	this->eventSocket.flush();
+	this->autoRefreshCommands();
 	qCInfo(logTriadIpc) << "Triad IPC event stream connected.";
 }
 
@@ -199,7 +218,7 @@ qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callbac
 	    socket,
 	    &QLocalSocket::readyRead,
 	    this,
-	    [this, socket, reader, callback, cleanup]() {
+	    [this, requestId, socket, reader, callback, cleanup]() {
 		    Q_UNUSED(socket);
 		    reader->startTransaction();
 		    auto line = reader->readUntil('\n');
@@ -210,14 +229,14 @@ qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callbac
 		    auto root = QJsonDocument::fromJson(line, &error).object();
 		    if (error.error != QJsonParseError::NoError) {
 			    qCWarning(logTriadIpc) << "Invalid Triad IPC response:" << error.errorString();
-			    if (callback) callback(false, {}, error.errorString());
+			    if (callback) callback(requestId, false, {}, error.errorString());
 			    cleanup();
 			    return;
 		    }
 
 		    auto ok = root.value("ok").toBool();
 		    if (ok) this->handleLine(line);
-		    if (callback) callback(ok, root.value("triad").toObject(), root.value("error").toString());
+		    if (callback) callback(requestId, ok, root.value("triad").toObject(), root.value("error").toString());
 		    cleanup();
 	    }
 	);
@@ -226,9 +245,9 @@ qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callbac
 	    socket,
 	    &QLocalSocket::errorOccurred,
 	    this,
-	    [payload, callback, cleanup](QLocalSocket::LocalSocketError error) {
+	    [requestId, payload, callback, cleanup](QLocalSocket::LocalSocketError error) {
 		    qCWarning(logTriadIpc) << "Error making Triad request:" << error << "request:" << payload;
-		    if (callback) callback(false, {}, QStringLiteral("socket error"));
+		    if (callback) callback(requestId, false, {}, QStringLiteral("socket error"));
 		    cleanup();
 	    }
 	);
@@ -237,66 +256,252 @@ qint32 TriadIpc::makeRequest(const QJsonObject& payload, RequestCallback callbac
 	return requestId;
 }
 
-void TriadIpc::refresh() { this->makeRequest(triadPayload("state")); }
+qint32 TriadIpc::makeTrackedRequest(const QJsonObject& payload) {
+	return this->makeRequest(
+	    payload,
+	    [this](qint32 requestId, bool ok, const QJsonObject& triad, const QString& error) {
+		    emit this->requestFinished(requestId, ok, triad.toVariantMap(), error);
+	    }
+	);
+}
 
-void TriadIpc::refreshLayout() { this->makeRequest(triadPayload("layout-state")); }
+qint32 TriadIpc::refresh() { return this->makeTrackedRequest(triadPayload("state")); }
 
-void TriadIpc::refreshWindows() { this->makeRequest(triadPayload("windows")); }
+qint32 TriadIpc::refreshLayout() {
+	return this->makeTrackedRequest(triadPayload("layout-state"));
+}
+
+qint32 TriadIpc::refreshWindows() { return this->makeTrackedRequest(triadPayload("windows")); }
+
+qint32 TriadIpc::refreshCapabilities() {
+	return this->makeTrackedRequest(triadPayload("capabilities"));
+}
+
+qint32 TriadIpc::refreshWorkspaces() {
+	return this->makeTrackedRequest(triadPayload("workspaces"));
+}
+
+qint32 TriadIpc::refreshOutputs() { return this->makeTrackedRequest(triadPayload("outputs")); }
+
+qint32 TriadIpc::refreshFocusedWindow() {
+	return this->makeTrackedRequest(triadPayload("focused-window"));
+}
+
+qint32 TriadIpc::refreshOverview() {
+	return this->makeTrackedRequest(triadPayload("overview-state"));
+}
+
+qint32 TriadIpc::refreshKeyboardLayouts() {
+	return this->makeTrackedRequest(triadPayload("keyboard-layouts"));
+}
+
+qint32 TriadIpc::refreshCommands() {
+	return this->makeTrackedRequest(triadPayload("commands"));
+}
 
 qint32 TriadIpc::sendRequest(const QString& request, const QVariantMap& payload) {
 	auto object = QJsonObject::fromVariantMap(payload);
 	object.insert("request", request);
-	auto requestIdPtr = std::make_shared<qint32>(-1);
-	*requestIdPtr = this->makeRequest(
-	    object,
-	    [this, requestIdPtr](bool ok, const QJsonObject& triad, const QString& error) {
-		    emit this->requestFinished(*requestIdPtr, ok, triad.toVariantMap(), error);
-	    }
-	);
-	return *requestIdPtr;
+	return this->makeTrackedRequest(object);
 }
 
 qint32 TriadIpc::sendAction(const QString& action, const QVariantMap& payload) {
 	auto object = QJsonObject::fromVariantMap(payload);
 	object.insert("request", "action");
 	object.insert("action", action);
-	auto requestIdPtr = std::make_shared<qint32>(-1);
-	*requestIdPtr = this->makeRequest(
-	    object,
-	    [this, requestIdPtr](bool ok, const QJsonObject& triad, const QString& error) {
-		    emit this->requestFinished(*requestIdPtr, ok, triad.toVariantMap(), error);
-	    }
-	);
-	return *requestIdPtr;
+	return this->makeTrackedRequest(object);
 }
 
-void TriadIpc::dispatch(const QString& action, const QVariantMap& payload) {
-	auto object = QJsonObject::fromVariantMap(payload);
-	object.insert("request", "action");
-	object.insert("action", action);
-	this->makeRequest(object);
+qint32 TriadIpc::dispatch(const QString& action, const QVariantMap& payload) {
+	return this->sendAction(action, payload);
 }
 
-void TriadIpc::focusWorkspace(qint32 workspaceIndex) {
-	this->dispatch("focus-workspace", {{"workspace_idx", workspaceIndex}});
+qint32 TriadIpc::dispatchBinding(const QString& kind, const QString& binding, qint32 amount) {
+	auto normalizedKind = kind.toLower();
+	auto object = QJsonObject();
+	object.insert("request", "dispatch-binding");
+	object.insert("kind", normalizedKind);
+	object.insert("binding", binding);
+	if (normalizedKind == "axis" || normalizedKind == "wheel" || normalizedKind == "scroll") {
+		object.insert("ticks", amount);
+	} else if (normalizedKind == "gesture") {
+		object.insert("fingers", amount);
+	}
+	return this->makeTrackedRequest(object);
 }
 
-void TriadIpc::focusTag(qint32 tagId) { this->dispatch("focus-tag", {{"tag", tagId}}); }
-
-void TriadIpc::focusWindow(qint32 windowId) { this->dispatch("focus-window", {{"id", windowId}}); }
-
-void TriadIpc::closeWindow(qint32 windowId) {
-	if (windowId > 0) this->dispatch("close-window", {{"id", windowId}});
-	else this->dispatch("close-window");
+qint32 TriadIpc::focusWorkspace(qint32 workspaceIndex) {
+	return this->dispatch("focus-workspace", {{"workspace_idx", workspaceIndex}});
 }
 
-void TriadIpc::switchLayout() { this->makeRequest(triadPayload("switch-layout")); }
+qint32 TriadIpc::focusTag(qint32 tagId) { return this->dispatch("focus-tag", {{"tag", tagId}}); }
 
-void TriadIpc::setLayout(const QString& layoutId, const QVariantMap& target) {
+qint32 TriadIpc::focusWindow(qint32 windowId) {
+	return this->dispatch("focus-window", {{"id", windowId}});
+}
+
+qint32 TriadIpc::closeWindow(qint32 windowId) {
+	if (windowId > 0) return this->dispatch("close-window", {{"id", windowId}});
+	return this->dispatch("close-window");
+}
+
+qint32 TriadIpc::switchLayout() {
+	return this->makeTrackedRequest(triadPayload("switch-layout"));
+}
+
+qint32 TriadIpc::setLayout(const QString& layoutId, const QVariantMap& target) {
 	auto payload = triadPayload("set-layout");
 	payload.insert("layout", layoutId);
 	if (!target.isEmpty()) payload.insert("target", QJsonObject::fromVariantMap(target));
-	this->makeRequest(payload);
+	return this->makeTrackedRequest(payload);
+}
+
+QVariantMap TriadIpc::commandSpec(const QString& name) const {
+	for (const auto& value: this->mCommandsCatalog.value("commands").toList()) {
+		auto command = value.toMap();
+		if (command.value("name").toString() == name) return command;
+
+		for (const auto& alias: command.value("aliases").toList()) {
+			if (alias.toString() == name) return command;
+		}
+	}
+
+	return {};
+}
+
+bool TriadIpc::hasCommand(const QString& name) const {
+	return !this->commandSpec(name).isEmpty();
+}
+
+bool TriadIpc::hasCommandPayloadField(
+    const QVariantMap& payload,
+    const QString& key,
+    QMetaType::Type type
+) const {
+	auto value = payload.value(key);
+	if (!value.isValid() || value.isNull()) return false;
+	if (type == QMetaType::Int) return isNumeric(value);
+	if (type == QMetaType::Double) return isNumeric(value);
+	if (type == QMetaType::QString) return isString(value);
+	if (type == QMetaType::Bool) return isBool(value);
+	if (type == QMetaType::QVariantList) return isList(value);
+	return value.metaType().id() == type;
+}
+
+bool TriadIpc::payloadMatchesShape(const QString& shape, const QVariantMap& payload) const {
+	auto optionalInt = [this, &payload](const QString& key) {
+		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::Int);
+	};
+	auto optionalDouble = [this, &payload](const QString& key) {
+		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::Double);
+	};
+	auto optionalString = [this, &payload](const QString& key) {
+		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::QString);
+	};
+	auto optionalBool = [this, &payload](const QString& key) {
+		return !payload.contains(key) || this->hasCommandPayloadField(payload, key, QMetaType::Bool);
+	};
+
+	if (shape == "none") return true;
+	if (shape == "optional-window-id") return optionalInt("id");
+	if (shape == "required-window-id") {
+		return this->hasCommandPayloadField(payload, "id", QMetaType::Int);
+	}
+	if (shape == "window-tag-follow") {
+		return this->hasCommandPayloadField(payload, "id", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "tag", QMetaType::Int) && optionalBool("follow");
+	}
+	if (shape == "window-workspace-follow") {
+		return this->hasCommandPayloadField(payload, "id", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "workspace_idx", QMetaType::Int)
+		    && optionalBool("follow");
+	}
+	if (shape == "window-bool") {
+		return this->hasCommandPayloadField(payload, "id", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "value", QMetaType::Bool);
+	}
+	if (shape == "tag-layout") {
+		return this->hasCommandPayloadField(payload, "tag", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "layout", QMetaType::QString);
+	}
+	if (shape == "required-tag") {
+		return this->hasCommandPayloadField(payload, "tag", QMetaType::Int);
+	}
+	if (shape == "required-workspace-idx") {
+		return this->hasCommandPayloadField(payload, "workspace_idx", QMetaType::Int);
+	}
+	if (shape == "required-name") {
+		return this->hasCommandPayloadField(payload, "name", QMetaType::QString);
+	}
+	if (shape == "required-output") {
+		return this->hasCommandPayloadField(payload, "output", QMetaType::QString);
+	}
+	if (shape == "required-float-delta" || shape == "required-int-delta"
+	    || shape == "optional-float-delta" || shape == "optional-int-delta") {
+		auto required = !shape.startsWith("optional");
+		return required ? this->hasCommandPayloadField(payload, "delta", QMetaType::Double)
+		                : optionalDouble("delta");
+	}
+	if (shape == "required-float-value") {
+		return this->hasCommandPayloadField(payload, "value", QMetaType::Double);
+	}
+	if (shape == "required-int-count") {
+		return this->hasCommandPayloadField(payload, "count", QMetaType::Int);
+	}
+	if (shape == "move-delta") {
+		return this->hasCommandPayloadField(payload, "dx", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "dy", QMetaType::Int);
+	}
+	if (shape == "resize-delta") {
+		return this->hasCommandPayloadField(payload, "dw", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "dh", QMetaType::Int);
+	}
+	if (shape == "recent-advance") {
+		return optionalString("scope") && optionalString("filter");
+	}
+	if (shape == "recent-scope") {
+		return this->hasCommandPayloadField(payload, "scope", QMetaType::QString);
+	}
+	if (shape == "spawn-argv" || shape == "split-tree-mode-list") {
+		return this->hasCommandPayloadField(payload, "argv", QMetaType::QVariantList);
+	}
+	if (shape == "warp-pointer") {
+		return this->hasCommandPayloadField(payload, "x", QMetaType::Int)
+		    && this->hasCommandPayloadField(payload, "y", QMetaType::Int);
+	}
+	if (shape == "screenshot") {
+		return optionalString("path") && optionalBool("show_pointer") && optionalBool("write_to_disk")
+		    && optionalBool("copy_to_clipboard");
+	}
+	if (shape == "keyboard-layout-target") {
+		if (!payload.contains("layout")) return true;
+		auto layout = payload.value("layout");
+		return isString(layout) || isNumeric(layout);
+	}
+
+	return false;
+}
+
+bool TriadIpc::validateAction(const QString& action, const QVariantMap& payload) const {
+	auto command = this->commandSpec(action);
+	if (command.isEmpty()) return false;
+	return this->payloadMatchesShape(command.value("arg_shape").toString(), payload);
+}
+
+qint32 TriadIpc::sendValidatedAction(const QString& action, const QVariantMap& payload) {
+	if (!this->validateAction(action, payload)) return -1;
+	return this->sendAction(action, payload);
+}
+
+void TriadIpc::autoRefreshCommands() {
+	if (this->commandsAutoRefreshRequested || !this->mCommandsCatalog.isEmpty()) return;
+	this->commandsAutoRefreshRequested = true;
+	this->makeRequest(
+	    triadPayload("commands"),
+	    [this](qint32, bool ok, const QJsonObject&, const QString&) {
+		    if (!ok) this->commandsAutoRefreshRequested = false;
+	    }
+	);
 }
 
 void TriadIpc::handleLine(const QByteArray& line) {
@@ -340,8 +545,13 @@ void TriadIpc::handleTriadObject(const QJsonObject& triad) {
 		this->handleWindows(triad.value("windows").toArray());
 		this->updateDerivedState();
 	} else if (type == "focused-window") {
-		if (triad.value("window").isObject()) this->handleWindow(triad.value("window").toObject());
-		else this->bFocusedWindow = nullptr;
+		if (triad.value("window").isObject()) {
+			this->focusedWindowExplicitlyNull = false;
+			this->handleWindow(triad.value("window").toObject());
+		} else {
+			this->focusedWindowExplicitlyNull = true;
+			this->bFocusedWindow = nullptr;
+		}
 		this->updateDerivedState();
 	} else if (type == "capabilities") {
 		this->mCapabilities = triad.value("capabilities").toObject().toVariantMap();
@@ -460,6 +670,7 @@ void TriadIpc::handleOutputs(const QJsonArray& outputs) {
 }
 
 void TriadIpc::handleWindows(const QJsonArray& windows) {
+	this->focusedWindowExplicitlyNull = false;
 	auto newValues = QList<TriadWindow*>();
 	auto seen = QHash<qint32, bool>();
 
@@ -504,6 +715,7 @@ void TriadIpc::handleWindow(const QJsonObject& object) {
 	}
 
 	window->updateFromObject(object.toVariantMap());
+	if (window->bindableFocused().value()) this->focusedWindowExplicitlyNull = false;
 }
 
 void TriadIpc::updateDerivedState() {
@@ -517,10 +729,12 @@ void TriadIpc::updateDerivedState() {
 	this->bFocusedWorkspace = focusedWorkspace;
 
 	TriadWindow* focusedWindow = nullptr;
-	for (auto* window: this->mWindows.valueList()) {
-		if (window->bindableFocused().value()) {
-			focusedWindow = window;
-			break;
+	if (!this->focusedWindowExplicitlyNull) {
+		for (auto* window: this->mWindows.valueList()) {
+			if (window->bindableFocused().value()) {
+				focusedWindow = window;
+				break;
+			}
 		}
 	}
 	this->bFocusedWindow = focusedWindow;
